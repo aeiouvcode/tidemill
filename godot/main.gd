@@ -374,7 +374,11 @@ func _tex_brick() -> ImageTexture:
 	for y in range(0, 128, 8):
 		for x in range(-16, 128, 16):
 			var ox := 8 if (y / 8) % 2 == 1 else 0
-			im.fill_rect(Rect2i(x + ox + 1, y + 1, 15, 7).intersection(Rect2i(0, 0, 128, 128)), _grey(222 + int(r.randf() * 33)))
+			# mottled like the reference: a spread of brick tones, a few dark bricks, soft large patches
+			var patch := 0.94 + 0.06 * sin(float(x + ox) * TAU / 128.0 * 2.0 + 1.3) * sin(float(y) * TAU / 128.0 * 3.0)
+			var g := 226.0 + r.randf() * 40.0
+			if r.randf() < 0.18: g = 186.0 + r.randf() * 24.0
+			im.fill_rect(Rect2i(x + ox + 1, y + 1, 15, 7).intersection(Rect2i(0, 0, 128, 128)), _grey(mini(255, int(g * patch))))
 	return _done(im)
 
 func _tex_tile() -> ImageTexture:
@@ -578,6 +582,10 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 		var wc := shade(PAL[ci], tint)
 		var roof_top := not has(c, k + 1)
 		var door_done := false
+		# free-standing tall columns read as the reference's eight-sided towers: chamfer the corners
+		var octo := k >= 2 and _column_tall(c)
+		for i in 4:
+			if has(cl.nb[i], k) or has(cl.nb[i], k - 1) or has(cl.nb[i], k + 1): octo = false
 		for i in 4:
 			var n: int = cl.nb[i]
 			if has(n, k): continue
@@ -585,7 +593,19 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 			W.ctx = {c = c, k = k, t = "wall", e = i}
 			var bf := 0.72 if (k == 1 or not has(c, k - 1)) else 1.0
 			var tf := 0.88 if roof_top else 1.0
-			W.quad(vp(e.a, yb), vp(e.b, yb), vp(e.b, yt), vp(e.a, yt), [shade(wc, bf), shade(wc, bf), shade(wc, tf), shade(wc, tf)], [Vector2(0, yb), Vector2(e.L, yb), Vector2(e.L, yt), Vector2(0, yt)], e.n)
+			var wcols := [shade(wc, bf), shade(wc, bf), shade(wc, tf), shade(wc, tf)]
+			if octo:
+				var pa: Vector2 = P[e.a]; var pb: Vector2 = P[e.b]
+				var a2 := pa.lerp(pb, 0.2); var b2 := pa.lerp(pb, 0.8)
+				W.quad(Vector3(a2.x, yb, a2.y), Vector3(b2.x, yb, b2.y), Vector3(b2.x, yt, b2.y), Vector3(a2.x, yt, a2.y), wcols, [Vector2(e.L * 0.2, yb), Vector2(e.L * 0.8, yb), Vector2(e.L * 0.8, yt), Vector2(e.L * 0.2, yt)], e.n)
+				var en2: Dictionary = E[c][(i + 1) % 4]
+				var pc: Vector2 = P[en2.a]; var pd: Vector2 = P[en2.b]
+				var c2 := pc.lerp(pd, 0.2)
+				var cn: Vector3 = (e.n + en2.n).normalized()
+				var cl2 := b2.distance_to(c2)
+				W.quad(Vector3(b2.x, yb, b2.y), Vector3(c2.x, yb, c2.y), Vector3(c2.x, yt, c2.y), Vector3(b2.x, yt, b2.y), [shade(wc, bf * 0.93), shade(wc, bf * 0.93), shade(wc, tf * 0.93), shade(wc, tf * 0.93)], [Vector2(0, yb), Vector2(cl2, yb), Vector2(cl2, yt), Vector2(0, yt)], cn)
+			else:
+				W.quad(vp(e.a, yb), vp(e.b, yb), vp(e.b, yt), vp(e.a, yt), wcols, [Vector2(0, yb), Vector2(e.L, yb), Vector2(e.L, yt), Vector2(0, yt)], e.n)
 			PL.ctx = {c = c, k = k, t = "wall", e = i}
 			var em: Vector2 = e.m
 			var et: Vector3 = e.t; var en: Vector3 = e.n
