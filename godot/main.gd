@@ -32,6 +32,8 @@ var mask_tex: ImageTexture
 var mask_wide_tex: ImageTexture
 var refl_vp: SubViewport
 var refl_cam: Camera3D
+var refl_n := 0
+var refl_last := Transform3D()
 var pick_groups: Array = []  # [PackedVector3Array positions, Array info]
 
 var cam: Camera3D
@@ -223,7 +225,7 @@ func _edge(c: int, i: int) -> Dictionary:
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
 	base_dist = 43.0 if s.x < s.y else 29.0
-	if refl_vp: refl_vp.size = Vector2i(maxi(64, int(s.x * 0.4)), maxi(64, int(s.y * 0.4)))
+	if refl_vp: refl_vp.size = Vector2i(maxi(64, int(s.x * 0.3)), maxi(64, int(s.y * 0.3)))
 	_reframe()
 	dist = goal_dist; target = goal_target
 
@@ -296,7 +298,7 @@ func _scene() -> void:
 	# planar reflection: a low-res mirrored camera renders the town (not the sea)
 	refl_vp = SubViewport.new()
 	refl_vp.transparent_bg = true
-	refl_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	refl_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	refl_vp.size = Vector2i(256, 256)
 	add_child(refl_vp)
 	refl_cam = Camera3D.new()
@@ -1080,6 +1082,12 @@ func _process(delta: float) -> void:
 	refl_cam.fov = cam.fov; refl_cam.near = cam.near; refl_cam.far = cam.far
 	var mp := Vector3(cam.position.x, -cam.position.y, cam.position.z)
 	refl_cam.look_at_from_position(mp, Vector3(target.x, -target.y, target.z), Vector3.UP)
+	# throttle the mirror render: every 2nd frame while the view moves, every 6th when still
+	refl_n += 1
+	var moving := not refl_cam.global_transform.is_equal_approx(refl_last)
+	if refl_n >= (2 if moving else 6):
+		refl_n = 0; refl_last = refl_cam.global_transform
+		refl_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	water_mat.set_shader_parameter("u_time", t)
 	for g in gulls:
 		var a: float = t * g.sp + g.ph
