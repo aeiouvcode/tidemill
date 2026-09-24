@@ -89,8 +89,15 @@ class GB:
 	var c := PackedColorArray()
 	var info: Array = []
 	var ctx = null
+	var alt: GB = null
+	var mc := -1
+	var mk := -1
 
 	func tri(a: Vector3, b: Vector3, d: Vector3, ca: Color, cb: Color, cd: Color, ua := Vector2.ZERO, ub := Vector2.ZERO, ud := Vector2.ZERO, want := Vector3.ZERO) -> void:
+		if alt != null and ctx != null and ctx.c == mc and ctx.k == mk:
+			alt.ctx = ctx
+			alt.tri(a, b, d, ca, cb, cd, ua, ub, ud, want)
+			return
 		var nn := (b - a).cross(d - a).normalized()
 		if want != Vector3.ZERO and nn.dot(want) < 0.0:
 			tri(a, d, b, ca, cd, cb, ua, ud, ub)
@@ -167,6 +174,9 @@ func _ready() -> void:
 
 	_scene()
 	_ui()
+	if OS.has_feature("web"):
+		var q := str(_win().location.search)
+		if q.find("slow=") >= 0: Engine.time_scale = 0.15
 	var loaded = _decode(_hash())
 	if loaded == null:
 		loaded = _decode(_stored())
@@ -393,8 +403,11 @@ func _column_tall(c: int) -> bool:
 		if has(c, k): n += 1
 	return n >= 4
 
-func build_town() -> Dictionary:
+func build_town(ac := -1, ak := -1) -> Dictionary:
 	var W := GB.new(); var RF := GB.new(); var GR := GB.new(); var ST := GB.new(); var PL := GB.new()
+	if ac >= 0:
+		for g in [W, RF, GR, ST, PL]:
+			g.alt = GB.new(); g.mc = ac; g.mk = ak
 	var lamps := []; var bushes := []; var finials := []
 	var list := []
 	for kk in blocks.keys():
@@ -585,11 +598,25 @@ func build_town() -> Dictionary:
 	return {W = W, RF = RF, GR = GR, ST = ST, PL = PL, lamps = lamps, bushes = bushes, finials = finials}
 
 # ---------------------------------------------------------------- rebuild
-func rebuild() -> void:
+var rise: Node3D = null
+var rise_t := -1.0
+var drops: Array = []
+
+func rebuild(ac := -1, ak := -1) -> void:
 	for ch in town.get_children():
 		ch.queue_free()
-	var B := build_town()
 	pick_groups = []
+	var B := build_town(ac, ak)
+	if rise: rise.queue_free(); rise = null
+	if ac >= 0:
+		rise = Node3D.new(); town.add_child(rise); rise_t = 0.0
+		for k in ["W", "RF", "GR", "ST", "PL"]:
+			var ag: GB = B[k].alt
+			if ag.p.is_empty(): continue
+			var mi := MeshInstance3D.new(); mi.mesh = ag.mesh(); mi.material_override = MAT[k]
+			rise.add_child(mi)
+			pick_groups.append([ag.p, ag.info])
+		rise.position.y = -0.9
 	for k in ["W", "RF", "GR", "ST", "PL"]:
 		var gb: GB = B[k]
 		if gb.p.is_empty(): continue
@@ -821,7 +848,11 @@ func act(sp: Vector2, force_erase := false) -> void:
 	if undo_stack.size() > 120: undo_stack.pop_front()
 	_tone(tk, rem)
 	_ripple(h.point)
-	rebuild(); _save(); _hide_hint()
+	if rem: rebuild()
+	else:
+		rebuild(tc, tk)
+		if tk == 0: _splash(cells[tc].c)
+	_save(); _hide_hint()
 	if OS.has_feature("web") and _win().navigator.vibrate != null: _win().navigator.vibrate(18 if rem else 8)
 
 var _ac = null
@@ -840,6 +871,37 @@ func _tone(k: int, remove: bool) -> void:
 	g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.09, t0 + 0.01)
 	g.gain.exponentialRampToValueAtTime(0.0001, t0 + (0.25 if remove else 0.6))
 	o.connect(g); g.connect(_ac.destination); o.start(t0); o.stop(t0 + 0.7)
+
+var drop_mesh: SphereMesh
+func _splash(c: Vector2) -> void:
+	if drop_mesh == null:
+		drop_mesh = SphereMesh.new(); drop_mesh.radius = 0.055; drop_mesh.height = 0.11; drop_mesh.radial_segments = 6; drop_mesh.rings = 3
+	for i in 18:
+		var a := TAU * i / 18.0 + randf() * 0.4
+		var r := 0.45 + randf() * 0.35
+		var m := MeshInstance3D.new(); m.mesh = drop_mesh
+		var mat := StandardMaterial3D.new(); mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mat.albedo_color = Color(0.95, 0.99, 1.0, 1.0)
+		m.material_override = mat; m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.position = Vector3(c.x + cos(a) * r, 0.05, c.y + sin(a) * r)
+		m.scale = Vector3.ONE * (0.6 + randf() * 0.8)
+		add_child(m)
+		drops.append({m = m, t = 0.0, v = Vector3(cos(a) * (0.6 + randf()), 2.2 + randf() * 1.6, sin(a) * (0.6 + randf()))})
+	_ripple(Vector3(c.x, 0.0, c.y))
+	get_tree().create_timer(0.18).timeout.connect(func(): _ripple(Vector3(c.x, 0.0, c.y)))
+	# foam stir: a soft white disc that spreads and fades around the new piece
+	var disc := MeshInstance3D.new()
+	var cm := CylinderMesh.new(); cm.top_radius = 1.0; cm.bottom_radius = 1.0; cm.height = 0.01; cm.radial_segments = 32
+	disc.mesh = cm
+	var dm := StandardMaterial3D.new(); dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; dm.albedo_color = Color(0.93, 0.97, 0.94, 0.55)
+	disc.material_override = dm; disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	disc.position = Vector3(c.x, 0.03, c.y); disc.scale = Vector3(0.5, 1, 0.5)
+	add_child(disc)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(disc, "scale", Vector3(1.5, 1, 1.5), 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(dm, "albedo_color:a", 0.0, 0.9)
+	tw.chain().tween_callback(disc.queue_free)
 
 func _ripple(p: Vector3) -> void:
 	var m := MeshInstance3D.new(); m.mesh = ring_mesh
@@ -908,6 +970,21 @@ func _process(delta: float) -> void:
 		g.n.rotation.y = -a
 		var f := sin(t * 6.0 + g.ph) * 0.5
 		g.l.rotation.z = f; g.r.rotation.z = -f
+	if rise != null and rise_t >= 0.0:
+		rise_t += dt
+		var u := clampf(rise_t / 0.6, 0.0, 1.0)
+		# ease-out-back: rises from the water, overshoots a touch, settles
+		var c1 := 1.9
+		var e := 1.0 + (c1 + 1.0) * pow(u - 1.0, 3) + c1 * pow(u - 1.0, 2)
+		rise.position.y = -0.9 * (1.0 - e)
+		if u >= 1.0: rise.position.y = 0.0; rise_t = -1.0
+	for i in range(drops.size() - 1, -1, -1):
+		var d: Dictionary = drops[i]
+		d.t += dt; d.v.y -= 9.0 * dt
+		d.m.position += d.v * dt
+		d.m.material_override.albedo_color.a = maxf(0.0, 1.0 - d.t / 0.7)
+		if d.t > 0.7 or d.m.position.y < -0.1:
+			d.m.queue_free(); drops.remove_at(i)
 	for i in range(ripples.size() - 1, -1, -1):
 		var r: Dictionary = ripples[i]
 		r.t += dt
