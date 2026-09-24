@@ -1,6 +1,6 @@
 # Current task
 
-**Task:** Port TIDEMILL to Godot 4.5 (Compatibility / WebGL2) on this branch, water-first: depth-based shoreline foam and wave/sparkle shading that three.js could not carry, then lighting, then the town grammar and interaction.
+**Task (updated 2026-09-24):** Port the original TIDEMILL v4 (root build, commit b7a40cd) to Godot 4.5. Status: full v4 port running - same grid (grid.json baked from v4), block grammar, towers, roofs, rails, doors/windows, bushes, lamps, gulls, ripples, outlines, share-link format, undo/erase/share UI, tap/long-press/orbit/pinch. Next: foam halo parity, lighting polish, then engine-only upgrades. Original task: Port TIDEMILL to Godot 4.5 (Compatibility / WebGL2) on this branch, water-first: depth-based shoreline foam and wave/sparkle shading that three.js could not carry, then lighting, then the town grammar and interaction.
 **Spec:** Townscaper official screenshots (Steam app 1291340); three.js main stays the live reference for parity
 **Started:** 2026-09-23
 
