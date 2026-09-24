@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_lambert, specular_disabled, cull_back;
+render_mode diffuse_lambert, specular_disabled, cull_back, blend_mix, depth_draw_opaque;
 // Port of the v4 sea: flat teal, shallows and lapping foam rings driven by a
 // blurred land mask, plus soft broken foam at the shoreline.
 uniform sampler2D mask : filter_linear, repeat_disable;
@@ -45,13 +45,15 @@ void fragment(){
 	col = mix(col, rc, ra * (0.28 + 0.22 * smoothstep(0.0, 0.4, mw)));
 	float ring = 0.5 + 0.5*sin(m*26.0 - u_time*1.1 + n*0.6);
 	float brk = smoothstep(0.25, 0.65, vnoise(w.xz*2.6 + vec2(u_time*0.3, -u_time*0.2)));
-	float foam = smoothstep(0.72, 0.95, ring) * smoothstep(0.03, 0.2, m) * (1.0 - smoothstep(0.3, 0.45, m)) * 0.32 * (0.5 + 0.5*brk);
-	foam += smoothstep(0.45, 0.52, m) * 0.38;
+	float foam = smoothstep(0.72, 0.95, ring) * smoothstep(0.03, 0.2, m) * (1.0 - smoothstep(0.3, 0.45, m)) * 0.2 * (0.5 + 0.5*brk);
+	foam += smoothstep(0.42, 0.54, m) * 0.34;
 	// wide soft foam: a pale broken halo spreading well past the lapping rings
 	float wide = smoothstep(0.02, 0.35, mw) * (1.0 - smoothstep(0.2, 0.5, m));
 	float wbrk = smoothstep(0.3, 0.75, vnoise(w.xz*1.3 + vec2(-u_time*0.12, u_time*0.1)));
 	foam += wide * (0.10 + 0.16 * wbrk);
 	col = mix(col, vec3(0.93, 0.97, 0.94), clamp(foam, 0.0, 1.0) * 0.9);
 	ALBEDO = col;
+	// shallow water right at the quay is see-through, so the stone base shows below the surface
+	ALPHA = 1.0 - 0.5 * smoothstep(0.3, 0.5, m) * (1.0 - clamp(foam, 0.0, 1.0));
 	ROUGHNESS = 1.0;
 }
