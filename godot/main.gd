@@ -630,8 +630,8 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 				for pp in ring:
 					out.append(Vector3(C.x + (pp.x - C.x) * s, y, C.y + (pp.y - C.y) * s))
 				return out
-			var r0: Array = rp.call(1.16, yt - 0.06); var r1: Array = rp.call(1.0, yt + 0.12); var r2: Array = rp.call(0.62, yt + 0.62)
-			var apex := Vector3(C.x, yt + 1.25, C.y)
+			var r0: Array = rp.call(1.34, yt - 0.14); var r1: Array = rp.call(1.1, yt + 0.16); var r2: Array = rp.call(0.56, yt + 0.6)
+			var apex := Vector3(C.x, yt + 1.05, C.y)
 			var q := []
 			for vi in cl.v: q.append(vp(vi, yt))
 			RF.quad(q[0], q[1], q[2], q[3], CAP, null, Vector3.UP)
@@ -646,7 +646,7 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 		var p: int = ridge[key(c, k)]
 		var rc: Color = ROOF[(ci + (0 if hsh([c, 2]) < 0.5 else 1)) % ROOF.size()]
 		var Ec: Array = E[c]
-		var rh := 0.72; var oh := 0.13; var drop := 0.08
+		var rh := 0.72; var oh := 0.2; var drop := 0.1
 		var v0 := vp(cl.v[p % 4], yt - drop); var v1 := vp(cl.v[(p + 1) % 4], yt - drop)
 		var v2 := vp(cl.v[(p + 2) % 4], yt - drop); var v3 := vp(cl.v[(p + 3) % 4], yt - drop)
 		var eA: Dictionary = Ec[(p + 1) % 4]; var eB: Dictionary = Ec[(p + 3) % 4]
@@ -656,15 +656,26 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 		var rd := (R2 - R1).normalized()
 		var j1: bool = joined.call(c, k, p); var j2: bool = joined.call(c, k, (p + 2) % 4)
 		if not j1:
-			var s := rd * -0.1; R1 += s; v0 += s; v1 += s
+			var s := rd * -0.16; R1 += s; v0 += s; v1 += s
 		if not j2:
-			var s := rd * 0.1; R2 += s; v2 += s; v3 += s
+			var s := rd * 0.16; R2 += s; v2 += s; v3 += s
 		var ruv := func(pt: Vector3) -> Vector2: return Vector2(pt.x * rd.x + pt.z * rd.z, (pt.y - yt) * 2.2)
 		var upA: Vector3 = (eA.n + Vector3(0, 1.2, 0)).normalized()
 		var upB: Vector3 = (eB.n + Vector3(0, 1.2, 0)).normalized()
 		var rd9 := shade(rc, 0.9)
 		RF.quad(v1, v2, R2, R1, [rd9, rd9, rc, rc], [ruv.call(v1), ruv.call(v2), ruv.call(R2), ruv.call(R1)], upA)
 		RF.quad(v3, v0, R1, R2, [rd9, rd9, rc, rc], [ruv.call(v3), ruv.call(v0), ruv.call(R1), ruv.call(R2)], upB)
+		# chunky roof slab: a darker fascia along the eaves and exposed gable rakes
+		var th := Vector3(0, -0.07, 0)
+		var fz := shade(rc, 0.55)
+		RF.quad(v2 + th, v1 + th, v1, v2, fz, null, eA.n)
+		RF.quad(v0 + th, v3 + th, v3, v0, fz, null, eB.n)
+		if not j1:
+			RF.quad(v1 + th, R1 + th, R1, v1, fz, null, -rd)
+			RF.quad(R1 + th, v0 + th, v0, R1, fz, null, -rd)
+		if not j2:
+			RF.quad(R2 + th, v2 + th, v2, R2, fz, null, rd)
+			RF.quad(v3 + th, R2 + th, R2, v3, fz, null, rd)
 		for g in [[p, j1, Vector3(mp.x, yt + rh, mp.y)], [(p + 2) % 4, j2, Vector3(mq.x, yt + rh, mq.y)]]:
 			if g[1]: continue
 			var ei: int = g[0]; var Rp: Vector3 = g[2]
