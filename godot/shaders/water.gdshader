@@ -8,8 +8,9 @@ uniform sampler2D refl : filter_linear, repeat_disable;
 uniform float mb = 17.0;
 uniform float u_time = 0.0;
 uniform vec2 focus = vec2(0.0);
-uniform vec3 base_col : source_color = vec3(0.17, 0.40, 0.43);
-uniform vec3 shallow : source_color = vec3(0.40, 0.62, 0.58);
+uniform vec3 base_col : source_color = vec3(0.10, 0.26, 0.30);
+uniform vec3 far_col : source_color = vec3(0.30, 0.43, 0.47);
+uniform vec3 shallow : source_color = vec3(0.30, 0.48, 0.50);
 varying vec3 w;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -25,8 +26,9 @@ void fragment(){
 	float mw = inb ? texture(mask_wide, muv).r : 0.0;
 	float n = sin(w.x*0.35 + u_time*0.25) * sin(w.z*0.3 - u_time*0.2);
 	vec3 col = base_col * (0.97 + 0.05*n);
-	// open sea deepens away from the town, like the reference's darker teal
-	col *= mix(1.0, 0.84, smoothstep(10.0, 45.0, length(w.xz - focus)));
+	// reference sea: deep teal where you look down into it, paler toward the horizon (fresnel)
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.2);
+	col = mix(col, far_col, clamp(fres * 1.35, 0.0, 1.0));
 	col = mix(col, shallow, smoothstep(0.0, 0.55, m) * 0.7);
 	// soft planar reflection of the town, wobbled by the swell, tinted into the sea
 	vec2 wob = vec2(sin(w.z*1.7 + u_time*1.3), sin(w.x*1.3 - u_time*1.1)) * 0.004 + vec2(n*0.003, 0.0);
@@ -43,8 +45,8 @@ void fragment(){
 	col = mix(col, rc, ra * (0.28 + 0.22 * smoothstep(0.0, 0.4, mw)));
 	float ring = 0.5 + 0.5*sin(m*26.0 - u_time*1.1 + n*0.6);
 	float brk = smoothstep(0.25, 0.65, vnoise(w.xz*2.6 + vec2(u_time*0.3, -u_time*0.2)));
-	float foam = smoothstep(0.72, 0.95, ring) * smoothstep(0.03, 0.2, m) * (1.0 - smoothstep(0.3, 0.45, m)) * 0.45 * (0.5 + 0.5*brk);
-	foam += smoothstep(0.45, 0.52, m) * 0.6;
+	float foam = smoothstep(0.72, 0.95, ring) * smoothstep(0.03, 0.2, m) * (1.0 - smoothstep(0.3, 0.45, m)) * 0.32 * (0.5 + 0.5*brk);
+	foam += smoothstep(0.45, 0.52, m) * 0.38;
 	// wide soft foam: a pale broken halo spreading well past the lapping rings
 	float wide = smoothstep(0.02, 0.35, mw) * (1.0 - smoothstep(0.2, 0.5, m));
 	float wbrk = smoothstep(0.3, 0.75, vnoise(w.xz*1.3 + vec2(-u_time*0.12, u_time*0.1)));
