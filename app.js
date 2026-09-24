@@ -144,7 +144,9 @@ function edgeData(c, i) {
 }
 const shade = (col, f) => [col[0] * f, col[1] * f, col[2] * f];
 
+const STEPS = [];
 function buildTown() {
+  STEPS.length = 0;
   const W = new GB(), RF = new GB(), GR = new GB(), ST = new GB(), PL = new GB();
   const lamps = [], bushes = [], finials = [];
   const list = [...blocks.keys()].map(k => [Math.floor(k / 32), k % 32]);
@@ -186,13 +188,26 @@ function buildTown() {
         PL.quad(a0, b0, b1, a1, col, null, e.n);
         PL.quad(a1, b1, vp(e.b, G0 + 0.03), vp(e.a, G0 + 0.03), shade(col, 1.08), null, UP);
         PL.quad(a0, b0, add(vp(e.b, G0 - 0.12), mul(e.n, -0.02)), add(vp(e.a, G0 - 0.12), mul(e.n, -0.02)), shade(col, 0.6), null, [0, -1, 0]);
+        // landing steps: now and then an open quay edge gets stone steps down into the sea
+        const steps = top && !has(n, 1) && e.L > 0.62 && hash(c, i, 21) < 0.16 && i === [0, 1, 2, 3].find(j => !has(cl.nb[j], 0) && edgeData(c, j).L > 0.62) && ![0, 1, 2, 3].some(j => has(cl.nb[j], 1));
+        if (steps) {
+          STEPS.push([e.m[0], e.m[1], e.n[0], e.n[2]]);
+          ST.ctx = { c, k: 0, t: 'side', e: i };
+          const N = 4, run = 0.16, w = Math.min(0.56, e.L * 0.6) / 2, M0 = [e.m[0], 0, e.m[1]];
+          for (let j = 0; j < N; j++) {
+            const yTop = G0 - j * ((G0 + 0.08) / N), out = 0.04 + run * (j + 0.5);
+            const ctr = add([M0[0], (yTop - 0.8) / 2, M0[2]], mul(e.n, out));
+            ST.box(ctr, e.t, e.n, w, (yTop + 0.8) / 2, run / 2, shade(STONE, 1.02 - j * 0.06));
+          }
+        }
         if (top) {
           // railing
           PL.ctx = { c, k: 0, t: 'rail' };
           const inset = mul(e.n, -0.06), a = add(vp(e.a, 0), inset), b = add(vp(e.b, 0), inset);
-          const posts = Math.max(2, Math.round(e.L / 0.17));
-          for (let j = 0; j <= posts; j++) { const p = lerp3(a, b, j / posts); p[1] = G0 + 0.17; PL.box(p, e.t, e.n, 0.011, 0.14, 0.011, RAIL); }
-          const mm = lerp3(a, b, 0.5); mm[1] = G0 + 0.32; PL.box(mm, e.t, e.n, e.L / 2 + 0.012, 0.016, 0.02, RAIL);
+          const posts = Math.max(2, Math.round(e.L / 0.17)), gw = steps ? (Math.min(0.56, e.L * 0.6) / 2 + 0.02) / e.L : 0;
+          for (let j = 0; j <= posts; j++) { const f = j / posts; if (steps && Math.abs(f - 0.5) < gw - 0.02) continue; const p = lerp3(a, b, f); p[1] = G0 + 0.17; PL.box(p, e.t, e.n, 0.011, 0.14, 0.011, RAIL); }
+          if (!steps) { const mm = lerp3(a, b, 0.5); mm[1] = G0 + 0.32; PL.box(mm, e.t, e.n, e.L / 2 + 0.012, 0.016, 0.02, RAIL); }
+          else for (const [f0, f1] of [[0, 0.5 - gw], [0.5 + gw, 1]]) { const mm = lerp3(a, b, (f0 + f1) / 2); mm[1] = G0 + 0.32; PL.box(mm, e.t, e.n, e.L * (f1 - f0) / 2 + 0.012, 0.016, 0.02, RAIL); }
           
         }
       }
@@ -249,9 +264,18 @@ function buildTown() {
       W.quad(q[0], q[1], q[2], q[3], shade(wc, 0.6), q.map(p => [p[0], p[2]]), [0, -1, 0]);
       // arcade: corner piers down to whatever is below, arched spandrels on every open side
       let kb = k - 1; while (kb > 0 && !has(c, kb)) kb--;
+      const onWater = kb === 0 && !has(c, 0);
+      if (onWater) {
+        // stilts: slim timber posts straight into the sea, braced under the floor
+        const post = shade(DOOR, 1.25), yw = -0.5;
+        const inset = q => [cl.c[0] + (q[0] - cl.c[0]) * 0.86, cl.c[1] + (q[1] - cl.c[1]) * 0.86];
+        const cs = cl.v.map(i => inset(P[i]));
+        for (const p of cs) W.box([p[0], (yb + yw) / 2, p[1]], [1, 0, 0], [0, 0, 1], 0.045, (yb - yw) / 2, 0.045, post);
+        for (let i = 0; i < 4; i++) { const p0 = cs[i], p1 = cs[(i + 1) % 4], m = [(p0[0] + p1[0]) / 2, yb - 0.12, (p0[1] + p1[1]) / 2], t = norm([p1[0] - p0[0], 0, p1[1] - p0[1]]); W.box(m, t, [t[2], 0, -t[0]], Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / 2, 0.035, 0.03, post); }
+      }
       const ySup = kb === 0 ? G0 : base(kb) + FH, gap = yb - ySup;
       const d = Math.min(0.42, gap * 0.5), th = 0.1, pw = 0.055;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 4 && !onWater; i++) {
         const e = edgeData(c, i); if (has(cl.nb[i], k - 1) && has(cl.nb[i], k)) continue;
         const A = P[e.a], Bp = P[e.b], N = 14, inw = mul(e.n, -th);
         const pt = (s, y, o) => { const p = [A[0] + (Bp[0] - A[0]) * s, y, A[1] + (Bp[1] - A[1]) * s]; return o ? add(p, o) : p; };
@@ -274,19 +298,26 @@ function buildTown() {
     if (!roofTop) continue;
     RF.ctx = { c, k, t: 'top' };
     if (isTower(c, k)) {
+      PL.ctx = { c, k, t: 'top' };
       // octagonal bell cap + finial
       const ring = [];
       for (let i = 0; i < 4; i++) { const a = P[cl.v[i]], b = P[cl.v[(i + 1) % 4]]; for (const f of [0.2, 0.8]) ring.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]); }
       const C = cl.c, rp = (s, y) => ring.map(p => [C[0] + (p[0] - C[0]) * s, y, C[1] + (p[1] - C[1]) * s]);
-      const r0 = rp(1.16, yt - 0.06), r1 = rp(1.0, yt + 0.12), r2 = rp(0.62, yt + 0.62), apex = [C[0], yt + 1.25, C[1]];
-      const q = cl.v.map(i => vp(i, yt)); RF.quad(q[0], q[1], q[2], q[3], CAP, null, UP);
-      for (let i = 0; i < 8; i++) {
-        const j = (i + 1) % 8, out = norm([(r0[i][0] + r0[j][0]) / 2 - C[0], 0.6, (r0[i][2] + r0[j][2]) / 2 - C[1]]);
-        RF.quad(r0[i], r0[j], r1[j], r1[i], shade(CAP, 0.95), [[0, 0], [0.5, 0], [0.5, 0.2], [0, 0.2]], out);
-        RF.quad(r1[i], r1[j], r2[j], r2[i], CAP, [[0, 0.2], [0.5, 0.2], [0.5, 0.8], [0, 0.8]], out);
-        RF.tri(r2[i], r2[j], apex, CAP, CAP, CAP, [0, 0.8], [0.4, 0.8], [0.2, 1.4]);
-        const tt = cross(sub(r2[j], r2[i]), sub(apex, r2[i])); if (dot(tt, out) < 0) { const L = RF.p.length; /* fix winding */ const s = RF.p.splice(L - 9, 9); RF.p.push(...s.slice(0, 3), ...s.slice(6, 9), ...s.slice(3, 6)); const nn = RF.n.splice(RF.n.length - 9, 9); const f = norm(mul(nn.slice(0, 3), -1)); RF.n.push(...f, ...f, ...f); }
+      // bell profile: thin white eave, then a soft ogee in smooth gold up to the finial
+      const prof = [[1.14, -0.02, FRAME], [1.1, 0.07, FRAME], [1.0, 0.09, CAP], [0.97, 0.3, CAP], [0.86, 0.52, CAP], [0.68, 0.74, CAP], [0.46, 0.94, CAP], [0.26, 1.1, CAP], [0.1, 1.22, CAP]];
+      const rings = prof.map(([sc, dy]) => rp(sc, yt + dy)), apex = [C[0], yt + 1.3, C[1]];
+      const q = cl.v.map(i => vp(i, yt)); PL.quad(q[0], q[1], q[2], q[3], CAP, null, UP);
+      for (let r = 0; r < rings.length - 1; r++) {
+        const A = rings[r], Bq = rings[r + 1], col = prof[r][2] === FRAME && prof[r + 1][2] === FRAME ? FRAME : null;
+        const f0 = 0.84 + 0.2 * (r / rings.length), f1 = 0.84 + 0.2 * ((r + 1) / rings.length);
+        for (let i = 0; i < 8; i++) {
+          const j = (i + 1) % 8, out = norm([(A[i][0] + A[j][0]) / 2 - C[0], 0.5, (A[i][2] + A[j][2]) / 2 - C[1]]);
+          const c0 = col || shade(CAP, f0), c1 = col || shade(CAP, f1);
+          PL.quad(A[i], A[j], Bq[j], Bq[i], [c0, c0, c1, c1], null, out);
+        }
       }
+      const L8 = rings[rings.length - 1];
+      for (let i = 0; i < 8; i++) { const j = (i + 1) % 8, out = norm([(L8[i][0] + L8[j][0]) / 2 - C[0], 0.8, (L8[i][2] + L8[j][2]) / 2 - C[1]]); let a0 = L8[i], b0 = L8[j]; if (dot(cross(sub(b0, a0), sub(apex, a0)), out) < 0) [a0, b0] = [b0, a0]; PL.tri(a0, b0, apex, CAP, CAP, shade(CAP, 1.05)); }
       finials.push([apex[0], apex[1], apex[2], ci]);
       continue;
     }
@@ -443,7 +474,7 @@ function rebuildMask() {
   const cv = document.createElement('canvas'); cv.width = cv.height = MS; const g = cv.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, MS, MS); g.fillStyle = '#fff';
   const tp = (x, z) => [(x + MB) / (2 * MB) * MS, (z + MB) / (2 * MB) * MS];
-  cells.forEach((cl, c) => { if (!has(c, 0) && !has(c, 1)) return; g.beginPath(); cl.v.forEach((i, j) => { const [x, y] = tp(P[i][0], P[i][1]); j ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill(); });
+  cells.forEach((cl, c) => { if (!has(c, 0)) return; g.beginPath(); cl.v.forEach((i, j) => { const [x, y] = tp(P[i][0], P[i][1]); j ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill(); });
   const img = g.getImageData(0, 0, MS, MS).data; let a = new Float32Array(MS * MS), b = new Float32Array(MS * MS);
   for (let i = 0; i < MS * MS; i++) a[i] = img[i * 4] / 255;
   const r = 5;
@@ -613,7 +644,8 @@ function act(cx, cy, forceErase) {
   else {
     if (has(tc, tk)) { undoStack.pop(); return; }
     blocks.set(key(tc, tk), color);
-    if (tk >= 1 && !has(tc, 0)) blocks.set(key(tc, 0), color);
+    const stilt = t === 'wall' && tk >= 2 && !has(tc, 0);
+    if (tk >= 1 && !has(tc, 0) && !stilt) blocks.set(key(tc, 0), color);
   }
   FRESH.k = rem ? -1 : key(tc, tk); FRESH.t = 0;
   tone(tk, rem); ripple(h.point); rebuild(); FRESH.k = -1; save(); hideHint();
@@ -654,4 +686,4 @@ renderer.setAnimationLoop(() => {
   for (let i = ripples.length - 1; i >= 0; i--) { const r = ripples[i]; r.t += dt; r.m.scale.setScalar(0.2 + r.t * 1.6); r.m.material.opacity = Math.max(0, 0.8 - r.t * 1.2); if (r.t > 0.7) { scene.remove(r.m); r.m.material.dispose(); ripples.splice(i, 1); } }
   renderer.render(scene, camera);
 });
-window.__tm = { act, fitView, rebuild, FRESH, key, pop: () => popGroup && popGroup.scale.y, cells, blocks: () => blocks, camera, controls, encode, setColor: i => { color = i; } };
+window.__tm = { STEPS, act, fitView, rebuild, FRESH, key, pop: () => popGroup && popGroup.scale.y, cells, blocks: () => blocks, camera, controls, encode, setColor: i => { color = i; } };

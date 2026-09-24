@@ -22,6 +22,11 @@ The user's own Townscaper town: https://oskarstalberg.com/Townscaper/#Gi5zRAhcVV
 It shows a tall coral-red brick tower with an octagonal gold bell cap and finial, two narrow red gabled houses, a yellow cottage with bushes, a cobbled quay with red trim, thin dark railings and a T-shaped pier, and a soft foam halo on grey-teal water.
 v4 opens on a recreation of this town.
 
+## Live pages (2026-09-24 17:48)
+
+- Root https://aeiouvcode.github.io/tidemill/ = original v4 (root index.html/app.js). The user wants it KEPT - never overwrite root.
+- https://aeiouvcode.github.io/tidemill/next/ = improvement track (main commit 9c354aea, pass 1). Deploy a new pass by updating next/app.js (and next/ files) on main, only on the user's go.
+
 ## Dev branch
 
 Improvement cycles land on branch `dev` first; main (live Pages) moves only on the user's explicit go. Cycle 1 on dev: placement pop (FRESH block routed into a separate group, spring-scaled), arcades + piers under floating blocks, fitView() auto-framing on load/resize, warmer hemisphere/fill light, slimmer foam.
@@ -29,8 +34,7 @@ Improvement cycles land on branch `dev` first; main (live Pages) moves only on t
 ## Open gaps (next pass)
 
 - No ambient occlusion
-- Missing grammar: stairs; stilts over open water
-- Bell cap reads thatched (tile texture on a smooth cap)
+- Missing grammar: stairs up to raised floors (only sea landing steps so far)
 - Not yet checked on a real phone
 
 ## Save format

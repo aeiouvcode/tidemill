@@ -5,14 +5,18 @@
 
 ## Improvement loop (dev branch, user said "keep cooking" 2026-09-24 17:32; live push only on his go)
 
-Cycle 1 (dev, not live): placement pop, arcades under overhangs, auto-framing, coral shadows, slimmer foam.
+Cycle 1 - live at /next/ (main 9c354aea).
+Cycle 2 (dev, not live): bell cap, stilts, landing steps.
+Cycle 1: placement pop, arcades under overhangs, auto-framing, coral shadows, slimmer foam.
 
 ## Next pass
 
 - [x] Slimmer, softer foam halo (c1)
 - [x] Coral shading on the shadow side (c1)
 - [x] Arches under overhangs + placement pop (c1)
-- [ ] Stairs
+- [x] Stairs: landing steps down into the sea on some open quay edges (c2)
+- [x] Stilts over open water (c2)
+- [x] Smooth ogee bell cap, no tile texture (c2)
 - [ ] Ambient occlusion
 - [ ] Real-device check at 390px
 
