@@ -82,6 +82,10 @@ function buildGrid() {
   return { P, cells };
 }
 const { P, cells } = buildGrid();
+// which cells meet at each grid vertex - used for baked ambient occlusion
+const VC = P.map(() => []); cells.forEach((cl, c) => cl.v.forEach(v => VC[v].push(c)));
+// fraction of the cells around vertex v that hold a block at level k (0..1)
+const occ = (v, k) => { const l = VC[v]; if (!l.length) return 0; let n = 0; for (const c of l) if (has(c, k)) n++; return n / l.length; };
 
 // ---------- palette ----------
 const PALETTE = ['#e95c5b', '#ee8a5a', '#f2cf63', '#d9e070', '#a9c07a', '#7fc466', '#48b977', '#46b8a0', '#48afc8', '#5b8fe0', '#7777c9', '#b25670', '#d6ae8e', '#b3a69c', '#ecebe6'];
@@ -172,7 +176,9 @@ function buildTown() {
       if (top) {
         GR.ctx = { c, k: 0, t: 'top' };
         const q = cl.v.map(i => vp(i, G0));
-        GR.quad(q[0], q[1], q[2], q[3], COBBLE, q.map(p => [p[0] * 0.9, p[2] * 0.9]), UP);
+        // contact shadow: cobbles darken where they meet a wall
+        const gc = cl.v.map(v => { const o = occ(v, 1); return shade(COBBLE, o > 0 ? 1 - 0.4 * Math.min(1, 0.5 + o) : 1); });
+        GR.quad(q[0], q[1], q[2], q[3], gc, q.map(p => [p[0] * 0.9, p[2] * 0.9]), UP);
       }
       for (let i = 0; i < 4; i++) {
         const n = cl.nb[i]; if (has(n, 0)) continue;
@@ -233,7 +239,10 @@ function buildTown() {
       const e = edgeData(c, i);
       W.ctx = { c, k, t: 'wall', e: i };
       const bf = (k === 1 || !has(c, k - 1)) ? 0.72 : 1, tf = roofTop ? 0.88 : 1;
-      W.quad(vp(e.a, yb), vp(e.b, yb), vp(e.b, yt), vp(e.a, yt), [shade(wc, bf), shade(wc, bf), shade(wc, tf), shade(wc, tf)], [[0, yb], [e.L, yb], [e.L, yt], [0, yt]], e.n);
+      // inner corners: a vertical edge shared with other blocks at this level sits in a crease
+      const crease = v => { let n = 0; for (const o of VC[v]) if (o !== c && o !== n0 && has(o, k)) n++; return n ? 0.68 : 1; };
+      const n0 = n, ca = crease(e.a), cb = crease(e.b);
+      W.quad(vp(e.a, yb), vp(e.b, yb), vp(e.b, yt), vp(e.a, yt), [shade(wc, bf * ca), shade(wc, bf * cb), shade(wc, tf * (0.5 + ca / 2)), shade(wc, tf * (0.5 + cb / 2))], [[0, yb], [e.L, yb], [e.L, yt], [0, yt]], e.n);
       // openings
       PL.ctx = { c, k, t: 'wall', e: i };
       const M = [e.m[0], 0, e.m[1]];
@@ -303,21 +312,24 @@ function buildTown() {
       const ring = [];
       for (let i = 0; i < 4; i++) { const a = P[cl.v[i]], b = P[cl.v[(i + 1) % 4]]; for (const f of [0.2, 0.8]) ring.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]); }
       const C = cl.c, rp = (s, y) => ring.map(p => [C[0] + (p[0] - C[0]) * s, y, C[1] + (p[1] - C[1]) * s]);
-      // bell profile: thin white eave, then a soft ogee in smooth gold up to the finial
-      const prof = [[1.14, -0.02, FRAME], [1.1, 0.07, FRAME], [1.0, 0.09, CAP], [0.97, 0.3, CAP], [0.86, 0.52, CAP], [0.68, 0.74, CAP], [0.46, 0.94, CAP], [0.26, 1.1, CAP], [0.1, 1.22, CAP]];
-      const rings = prof.map(([sc, dy]) => rp(sc, yt + dy)), apex = [C[0], yt + 1.3, C[1]];
+      // octagonal hip roof like his reference: cornice band, wide flared eave, low tiled slope, small spire
       const q = cl.v.map(i => vp(i, yt)); PL.quad(q[0], q[1], q[2], q[3], CAP, null, UP);
-      for (let r = 0; r < rings.length - 1; r++) {
-        const A = rings[r], Bq = rings[r + 1], col = prof[r][2] === FRAME && prof[r + 1][2] === FRAME ? FRAME : null;
-        const f0 = 0.84 + 0.2 * (r / rings.length), f1 = 0.84 + 0.2 * ((r + 1) / rings.length);
+      const band = (s0, y0, s1, y1, col) => { const A = rp(s0, y0), Bq = rp(s1, y1); for (let i = 0; i < 8; i++) { const j = (i + 1) % 8, out = norm([(A[i][0] + A[j][0]) / 2 - C[0], 0.2, (A[i][2] + A[j][2]) / 2 - C[1]]); PL.quad(A[i], A[j], Bq[j], Bq[i], col, null, out); } };
+      band(1.04, yt - 0.14, 1.1, yt - 0.02, FRAME);           // cornice
+      band(1.1, yt - 0.02, 1.1, yt + 0.02, shade(FRAME, 0.9));
+      const eave = rp(1.34, yt - 0.04), mid = rp(1.0, yt + 0.16), top = rp(0.32, yt + 0.56), apex = [C[0], yt + 0.66, C[1]];
+      // eave soffit
+      for (let i = 0; i < 8; i++) { const j = (i + 1) % 8, A0 = rp(1.1, yt + 0.02); PL.quad(A0[i], A0[j], eave[j], eave[i], shade(CAP, 0.55), null, [0, -1, 0]); }
+      const rc = ROOF[(ci + 2) % ROOF.length], tl = lin('#f2b27c');
+      for (const [A, Bq, c0, c1] of [[eave, mid, shade(tl, 0.9), tl], [mid, top, tl, shade(tl, 1.06)]]) {
         for (let i = 0; i < 8; i++) {
-          const j = (i + 1) % 8, out = norm([(A[i][0] + A[j][0]) / 2 - C[0], 0.5, (A[i][2] + A[j][2]) / 2 - C[1]]);
-          const c0 = col || shade(CAP, f0), c1 = col || shade(CAP, f1);
-          PL.quad(A[i], A[j], Bq[j], Bq[i], [c0, c0, c1, c1], null, out);
+          const j = (i + 1) % 8, out = norm([(A[i][0] + A[j][0]) / 2 - C[0], 0.9, (A[i][2] + A[j][2]) / 2 - C[1]]);
+          const w = Math.hypot(A[j][0] - A[i][0], A[j][2] - A[i][2]) * 1.1, h = Math.hypot(Bq[i][0] - A[i][0], Bq[i][1] - A[i][1], Bq[i][2] - A[i][2]) * 1.1;
+          RF.quad(A[i], A[j], Bq[j], Bq[i], [c0, c0, c1, c1], [[0, 0], [w, 0], [w, h], [0, h]], out);
         }
       }
-      const L8 = rings[rings.length - 1];
-      for (let i = 0; i < 8; i++) { const j = (i + 1) % 8, out = norm([(L8[i][0] + L8[j][0]) / 2 - C[0], 0.8, (L8[i][2] + L8[j][2]) / 2 - C[1]]); let a0 = L8[i], b0 = L8[j]; if (dot(cross(sub(b0, a0), sub(apex, a0)), out) < 0) [a0, b0] = [b0, a0]; PL.tri(a0, b0, apex, CAP, CAP, shade(CAP, 1.05)); }
+      for (let i = 0; i < 8; i++) { const j = (i + 1) % 8, out = norm([(top[i][0] + top[j][0]) / 2 - C[0], 1.2, (top[i][2] + top[j][2]) / 2 - C[1]]); let a0 = top[i], b0 = top[j]; if (dot(cross(sub(b0, a0), sub(apex, a0)), out) < 0) [a0, b0] = [b0, a0]; PL.tri(a0, b0, apex, shade(rc, 0.8), shade(rc, 0.8), rc); }
+      void rc;
       finials.push([apex[0], apex[1], apex[2], ci]);
       continue;
     }
@@ -401,7 +413,7 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.28;
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-const FOG = new THREE.Color('#4a898e');
+const FOG = new THREE.Color('#3f7c82');
 scene.background = FOG; scene.fog = new THREE.Fog(FOG, 45, 120);
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.5, 400);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -420,7 +432,7 @@ function fitView() {
   const az = 0.55, pol = 1.02, dir = new THREE.Vector3(Math.sin(pol) * Math.sin(az), Math.cos(pol), Math.sin(pol) * Math.cos(az));
   const corners = []; for (const x of [x0, x1]) for (const y of [-0.3, y1]) for (const z of [z0, z1]) corners.push(new THREE.Vector3(x, y, z));
   // project the town's bounding box and pick the closest distance that keeps it inside the safe area
-  const mx = camera.aspect < 1 ? 0.72 : 0.8, my = 0.78, v = new THREE.Vector3();
+  const mx = camera.aspect < 1 ? 0.74 : 0.82, my = 0.86, v = new THREE.Vector3();
   const fits = d => { camera.position.set(cx, cy, cz).addScaledVector(dir, d); camera.lookAt(cx, cy, cz); camera.updateMatrixWorld(); let lo = 1, hi = -1; for (const p of corners) { v.copy(p).project(camera); if (Math.abs(v.x) > mx) return false; lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } return hi - lo < 2 * my; };
   let lo = controls.minDistance, hi = controls.maxDistance; for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; fits(m) ? hi = m : lo = m; }
   fits(hi);
@@ -435,7 +447,7 @@ controls.addEventListener('start', () => { userFramed = true; });
 
 scene.add(new THREE.HemisphereLight('#e2f1ee', '#b89484', 1.6));
 const sun = new THREE.DirectionalLight('#fff0d8', 2.4);
-sun.position.set(-14, 22, 10); sun.castShadow = true;
+sun.position.set(-11, 30, 9); sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.near = 1; sc.far = 70;
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
 scene.add(sun); scene.add(sun.target);
@@ -451,7 +463,7 @@ const MS = 256, MB = 17;
 const maskData = new Uint8Array(MS * MS);
 const maskTex = new THREE.DataTexture(maskData, MS, MS, THREE.RedFormat); maskTex.magFilter = maskTex.minFilter = THREE.LinearFilter; maskTex.needsUpdate = true;
 const waterU = { uMask: { value: maskTex }, uTime: { value: 0 }, uShallow: { value: new THREE.Color('#7db8ae') } };
-const waterMat = new THREE.MeshLambertMaterial({ color: '#3a7e85' });
+const waterMat = new THREE.MeshLambertMaterial({ color: '#306f76' });
 waterMat.onBeforeCompile = sh => {
   Object.assign(sh.uniforms, waterU);
   sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = (modelMatrix * vec4(position,1.0)).xyz;');
