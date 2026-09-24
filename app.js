@@ -100,9 +100,11 @@ const colorOf = (c, k) => blocks.get(key(c, k));
 // ---------- geometry building ----------
 const G0 = 0.3, FH = 1.0;
 const base = k => G0 + (k - 1) * FH;
+const FRESH = { k: -1, t: 9 }; // block that pops in after placement
 class GB {
-  constructor() { this.p = []; this.n = []; this.u = []; this.c = []; this.info = []; this.ctx = null; }
+  constructor(nofresh) { this.p = []; this.n = []; this.u = []; this.c = []; this.info = []; this.ctx = null; this.alt = nofresh ? null : new GB(true); }
   tri(a, b, c, ca, cb, cc, ua, ub, uc) {
+    if (this.alt && this.ctx && FRESH.k === key(this.ctx.c, this.ctx.k)) { this.alt.ctx = this.ctx; return this.alt.tri(a, b, c, ca, cb, cc, ua, ub, uc); }
     const n = norm(cross(sub(b, a), sub(c, a)));
     this.p.push(...a, ...b, ...c); this.n.push(...n, ...n, ...n); this.c.push(...ca, ...cb, ...cc);
     this.u.push(...(ua || [0, 0]), ...(ub || [0, 0]), ...(uc || [0, 0])); this.info.push(this.ctx);
@@ -196,7 +198,8 @@ function buildTown() {
       }
       if (top) {
         const nbld = [0, 1, 2, 3].filter(i => has(cl.nb[i], 1));
-        if (nbld.length && hash(c, 3) < 0.42) {
+        let covered = false; for (let kk = 2; kk < MAXK; kk++) if (has(c, kk)) { covered = true; break; }
+        if (nbld.length && !covered && hash(c, 3) < 0.42) {
           const e = edgeData(c, nbld[Math.floor(hash(c, 4) * nbld.length)]);
           const s = 0.18 + hash(c, 5) * 0.1;
           bushes.push([cl.c[0] + (e.m[0] - cl.c[0]) * 0.55, G0 + s * 0.8, cl.c[1] + (e.m[1] - cl.c[1]) * 0.55, s, hash(c, 6)]);
@@ -244,6 +247,29 @@ function buildTown() {
       W.ctx = { c, k, t: 'under' };
       const q = cl.v.map(i => vp(i, yb));
       W.quad(q[0], q[1], q[2], q[3], shade(wc, 0.6), q.map(p => [p[0], p[2]]), [0, -1, 0]);
+      // arcade: corner piers down to whatever is below, arched spandrels on every open side
+      let kb = k - 1; while (kb > 0 && !has(c, kb)) kb--;
+      const ySup = kb === 0 ? G0 : base(kb) + FH, gap = yb - ySup;
+      const d = Math.min(0.42, gap * 0.5), th = 0.1, pw = 0.055;
+      for (let i = 0; i < 4; i++) {
+        const e = edgeData(c, i); if (has(cl.nb[i], k - 1) && has(cl.nb[i], k)) continue;
+        const A = P[e.a], Bp = P[e.b], N = 14, inw = mul(e.n, -th);
+        const pt = (s, y, o) => { const p = [A[0] + (Bp[0] - A[0]) * s, y, A[1] + (Bp[1] - A[1]) * s]; return o ? add(p, o) : p; };
+        const sp = pw / e.L; // arch springs just inside the piers
+        const arcY = s => { const u = (s - sp) / (1 - 2 * sp); return u <= 0 || u >= 1 ? yb - d : yb - 0.07 - (d - 0.07) * (1 - Math.sin(Math.PI * u)); };
+        for (let j = 0; j < N; j++) {
+          const s0 = j / N, s1 = (j + 1) / N, y0 = arcY(s0), y1 = arcY(s1);
+          const ca = shade(wc, 0.82), cb = shade(wc, 0.9);
+          W.quad(pt(s0, y0), pt(s1, y1), pt(s1, yb), pt(s0, yb), [ca, ca, cb, cb], [[s0 * e.L, y0], [s1 * e.L, y1], [s1 * e.L, yb], [s0 * e.L, yb]], e.n);
+          const so = shade(wc, 0.55);
+          W.quad(pt(s0, y0), pt(s1, y1), pt(s1, y1, inw), pt(s0, y0, inw), so, null, [0, -1, 0]);
+        }
+        // piers at the two ends of this side, down to the support
+        for (const s of [sp * 0.5, 1 - sp * 0.5]) {
+          const cp = pt(s, 0, mul(e.n, -th / 2)); const h = (yb - d) - ySup;
+          if (h > 0.02) W.box([cp[0], ySup + h / 2, cp[2]], e.t, e.n, pw * 0.5, h / 2, th / 2, shade(wc, 0.86));
+        }
+      }
     }
     if (!roofTop) continue;
     RF.ctx = { c, k, t: 'top' };
@@ -353,16 +379,36 @@ controls.minDistance = 7; controls.maxDistance = 75; controls.minPolarAngle = 0.
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 controls.target.set(1.3, 3.3, -0.7);
-{ const d = innerWidth < innerHeight ? 43 : 29, az = 0.55, pol = 0.98; camera.position.set(1.3 + Math.sin(pol) * Math.sin(az) * d, Math.cos(pol) * d + 3.3, -0.7 + Math.sin(pol) * Math.cos(az) * d); }
-controls.update();
+let userFramed = false;
+// frame the whole town (tower cap included) with breathing room, whatever the screen shape
+function fitView() {
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, y1 = 2;
+  for (const kk of blocks.keys()) { const c = Math.floor(kk / 32), k = kk % 32; for (const i of cells[c].v) { x0 = Math.min(x0, P[i][0]); x1 = Math.max(x1, P[i][0]); z0 = Math.min(z0, P[i][1]); z1 = Math.max(z1, P[i][1]); } y1 = Math.max(y1, k === 0 ? G0 + 0.5 : base(k) + FH + 1.4); }
+  if (x0 > x1) { x0 = z0 = -3; x1 = z1 = 3; }
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, cy = y1 * 0.5;
+  const az = 0.55, pol = 1.02, dir = new THREE.Vector3(Math.sin(pol) * Math.sin(az), Math.cos(pol), Math.sin(pol) * Math.cos(az));
+  const corners = []; for (const x of [x0, x1]) for (const y of [-0.3, y1]) for (const z of [z0, z1]) corners.push(new THREE.Vector3(x, y, z));
+  // project the town's bounding box and pick the closest distance that keeps it inside the safe area
+  const mx = camera.aspect < 1 ? 0.72 : 0.8, my = 0.78, v = new THREE.Vector3();
+  const fits = d => { camera.position.set(cx, cy, cz).addScaledVector(dir, d); camera.lookAt(cx, cy, cz); camera.updateMatrixWorld(); let lo = 1, hi = -1; for (const p of corners) { v.copy(p).project(camera); if (Math.abs(v.x) > mx) return false; lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } return hi - lo < 2 * my; };
+  let lo = controls.minDistance, hi = controls.maxDistance; for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; fits(m) ? hi = m : lo = m; }
+  fits(hi);
+  // re-centre vertically on the projected box so the tower never clips
+  let ylo = 1, yhi = -1; for (const p of corners) { v.copy(p).project(camera); ylo = Math.min(ylo, v.y); yhi = Math.max(yhi, v.y); }
+  const shift = (ylo + yhi) / 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * hi;
+  const t = new THREE.Vector3(cx, cy + shift * Math.sin(pol), cz); camera.position.set(t.x, t.y, t.z).addScaledVector(dir, hi);
+  controls.target.copy(t);
+  controls.update();
+}
+controls.addEventListener('start', () => { userFramed = true; });
 
-scene.add(new THREE.HemisphereLight('#d7f0ee', '#5a8a86', 1.55));
+scene.add(new THREE.HemisphereLight('#e2f1ee', '#b89484', 1.6));
 const sun = new THREE.DirectionalLight('#fff0d8', 2.4);
 sun.position.set(-14, 22, 10); sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.near = 1; sc.far = 70;
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02; sun.shadow.radius = 3;
 scene.add(sun); scene.add(sun.target);
-const fill = new THREE.DirectionalLight('#9fd3dc', 0.45); fill.position.set(12, 8, -10); scene.add(fill);
+const fill = new THREE.DirectionalLight('#ffd9c4', 0.55); fill.position.set(12, 8, -10); scene.add(fill);
 
 const mat = (map, extra = {}) => new THREE.MeshLambertMaterial({ vertexColors: true, map, ...extra });
 const MAT = { W: mat(texBrick), RF: mat(texTile, { side: THREE.DoubleSide }), GR: mat(texCobble), ST: mat(texStone), PL: mat(null) };
@@ -384,10 +430,10 @@ waterMat.onBeforeCompile = sh => {
       float m = texture2D(uMask, vec2(muv.x, muv.y)).r;
       float n = sin(vW.x*0.35 + uTime*0.25)*sin(vW.z*0.3 - uTime*0.2);
       diffuseColor.rgb *= 0.97 + 0.05*n;
-      diffuseColor.rgb = mix(diffuseColor.rgb, uShallow, smoothstep(0.0, 0.55, m)*0.7);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uShallow, smoothstep(0.08, 0.55, m)*0.6);
       float ring = 0.5 + 0.5*sin(m*26.0 - uTime*1.1 + n*0.6);
-      float foam = smoothstep(0.72, 0.95, ring) * smoothstep(0.03, 0.2, m) * (1.0 - smoothstep(0.3, 0.45, m)) * 0.45;
-      foam += smoothstep(0.45, 0.52, m)*0.6;
+      float foam = smoothstep(0.8, 0.97, ring) * smoothstep(0.12, 0.26, m) * (1.0 - smoothstep(0.34, 0.44, m)) * 0.3;
+      foam += smoothstep(0.47, 0.53, m)*0.5;
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93,0.97,0.94), clamp(foam, 0.0, 1.0)*0.9);`);
 };
 const water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 1, 1), waterMat);
@@ -417,18 +463,33 @@ const lampGeo = new THREE.SphereGeometry(0.045, 10, 8);
 const finGeo = new THREE.LatheGeometry([[0, 0], [0.05, 0.02], [0.09, 0.12], [0.05, 0.2], [0.025, 0.24], [0.025, 0.3], [0.05, 0.36], [0.012, 0.52], [0, 0.56]].map(p => new THREE.Vector2(p[0], p[1])), 10);
 const finMat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
 
-let pickables = [];
+let pickables = [], popGroup = null;
+// spring overshoot: 0 -> 1 with one soft bounce, like a block settling into place
+function popCurve(t) { if (t >= 1) return 1; return 1 - Math.exp(-7 * t) * Math.cos(9.5 * t); }
+function applyPop(t) { if (!popGroup) return; const u = popCurve(t / 0.42); const sy = Math.max(0.02, u), sx = 0.72 + 0.28 * Math.min(1.15, u); popGroup.scale.set(sx, sy, sx); if (t >= 0.42) { popGroup.scale.set(1, 1, 1); popGroup = null; } }
 function rebuild() {
-  for (const o of [...town.children]) { town.remove(o); o.geometry?.dispose(); }
+  for (const o of [...town.children]) { town.remove(o); o.traverse(x => x.geometry?.dispose()); }
+  popGroup = null;
   const B = buildTown(); pickables = [];
   const outlineGeos = [];
+  const pop = new THREE.Group(), popOutl = [];
   for (const k of ['W', 'RF', 'GR', 'ST', 'PL']) {
-    const gb = B[k]; if (!gb.p.length) continue;
-    const geo = gb.geometry(); const m = new THREE.Mesh(geo, MAT[k]);
-    m.castShadow = k !== 'GR'; m.receiveShadow = true; m.userData.info = gb.info; town.add(m); pickables.push(m);
-    if (k !== 'PL') outlineGeos.push(new THREE.EdgesGeometry(geo, 28));
+    for (const [gb, parent, outl] of [[B[k], town, outlineGeos], [B[k].alt, pop, popOutl]]) {
+      if (!gb.p.length) continue;
+      const geo = gb.geometry(); const m = new THREE.Mesh(geo, MAT[k]);
+      m.castShadow = k !== 'GR'; m.receiveShadow = true; m.userData.info = gb.info; parent.add(m); pickables.push(m);
+      if (k !== 'PL') outl.push(new THREE.EdgesGeometry(geo, 28));
+    }
   }
   for (const eg of outlineGeos) town.add(new THREE.LineSegments(eg, outlineMat));
+  for (const eg of popOutl) pop.add(new THREE.LineSegments(eg, outlineMat));
+  if (pop.children.length) {
+    // pivot the popping block around its base centre so it springs up out of its footprint
+    const c = Math.floor(FRESH.k / 32), k = FRESH.k % 32, cl = cells[c];
+    const px = cl.c[0], py = k === 0 ? -0.2 : base(k), pz = cl.c[1];
+    pop.position.set(px, py, pz); for (const ch of pop.children) ch.position.set(-px, -py, -pz);
+    pop.userData.pop = true; town.add(pop); popGroup = pop; FRESH.t = 0; applyPop(0);
+  }
   const inst = (geo, material, arr, fn) => { if (!arr.length) return; const im = new THREE.InstancedMesh(geo, material, arr.length); const M = new THREE.Matrix4(), col = new THREE.Color(); arr.forEach((a, i) => { fn(M, col, a); im.setMatrixAt(i, M); im.setColorAt(i, col); }); im.castShadow = true; im.receiveShadow = true; town.add(im); };
   const greens = ['#3f7a4f', '#4d8a4a', '#35684a'];
   inst(bushGeo, bushMat, B.bushes, (M, col, b) => { M.compose(new THREE.Vector3(b[0], b[1], b[2]), new THREE.Quaternion().setFromEuler(new THREE.Euler(b[4] * 3, b[4] * 5, 0)), new THREE.Vector3(b[3], b[3] * 1.05, b[3])); col.set(greens[Math.floor(b[4] * 3)]); });
@@ -554,7 +615,8 @@ function act(cx, cy, forceErase) {
     blocks.set(key(tc, tk), color);
     if (tk >= 1 && !has(tc, 0)) blocks.set(key(tc, 0), color);
   }
-  tone(tk, rem); ripple(h.point); rebuild(); save(); hideHint();
+  FRESH.k = rem ? -1 : key(tc, tk); FRESH.t = 0;
+  tone(tk, rem); ripple(h.point); rebuild(); FRESH.k = -1; save(); hideHint();
   if (navigator.vibrate) navigator.vibrate(rem ? 18 : 8);
 }
 let hintGone = false; function hideHint() { if (hintGone) return; hintGone = true; document.getElementById('hint').classList.add('fade'); document.getElementById('title').classList.add('fade'); }
@@ -575,20 +637,21 @@ const up = ev => {
 };
 el.addEventListener('pointerup', up); el.addEventListener('pointercancel', () => { pointers = Math.max(0, pointers - 1); down = null; clearTimeout(lpTimer); });
 el.addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); if (!userFramed) fitView(); });
 
 // ---------- boot ----------
 blocks = decode(location.hash.slice(1)) || decode((() => { try { return localStorage.getItem('tidemill.town.v3'); } catch (e) { return null; } })()) || defaultTown();
-rebuild(); save();
+rebuild(); save(); fitView();
 controls.autoRotateSpeed = 0.35;
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   waterU.uTime.value = t;
+  if (popGroup) { FRESH.t += dt; applyPop(FRESH.t); }
   if (performance.now() - lastInteract > 14000) controls.autoRotate = true;
   controls.update();
   for (const g of gulls) { const u = g.userData, a = t * u.sp + u.ph; g.position.set(Math.cos(a) * u.rad, u.h + Math.sin(t * 0.7 + u.ph) * 0.4, Math.sin(a) * u.rad); g.rotation.y = -a; const f = Math.sin(t * 6 + u.ph) * 0.5; u.l.rotation.z = f; u.r.rotation.z = -f; }
   for (let i = ripples.length - 1; i >= 0; i--) { const r = ripples[i]; r.t += dt; r.m.scale.setScalar(0.2 + r.t * 1.6); r.m.material.opacity = Math.max(0, 0.8 - r.t * 1.2); if (r.t > 0.7) { scene.remove(r.m); r.m.material.dispose(); ripples.splice(i, 1); } }
   renderer.render(scene, camera);
 });
-window.__tm = { act, cells, blocks: () => blocks, camera, controls, encode, setColor: i => { color = i; } };
+window.__tm = { act, fitView, rebuild, FRESH, key, pop: () => popGroup && popGroup.scale.y, cells, blocks: () => blocks, camera, controls, encode, setColor: i => { color = i; } };

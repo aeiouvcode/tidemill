@@ -22,13 +22,15 @@ The user's own Townscaper town: https://oskarstalberg.com/Townscaper/#Gi5zRAhcVV
 It shows a tall coral-red brick tower with an octagonal gold bell cap and finial, two narrow red gabled houses, a yellow cottage with bushes, a cobbled quay with red trim, thin dark railings and a T-shaped pier, and a soft foam halo on grey-teal water.
 v4 opens on a recreation of this town.
 
+## Dev branch
+
+Improvement cycles land on branch `dev` first; main (live Pages) moves only on the user's explicit go. Cycle 1 on dev: placement pop (FRESH block routed into a separate group, spring-scaled), arcades + piers under floating blocks, fitView() auto-framing on load/resize, warmer hemisphere/fill light, slimmer foam.
+
 ## Open gaps (next pass)
 
-- Foam ring still wider and whiter than the reference halo
-- Shadow side of the red reads maroon; the reference stays coral
 - No ambient occlusion
-- Missing grammar: arches or stilts under floating blocks, stairs, a pop animation on placement
-- The palette brushes the tower in the phone opening view
+- Missing grammar: stairs; stilts over open water
+- Bell cap reads thatched (tile texture on a smooth cap)
 - Not yet checked on a real phone
 
 ## Save format
