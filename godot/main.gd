@@ -5,7 +5,7 @@ extends Node3D
 
 const GRID_SEED := 11
 const MAXK := 30
-const G0 := 0.3
+const G0 := 0.5
 const FH := 1.0
 const PALETTE := ["#e95c5b", "#ee8a5a", "#f2cf63", "#d9e070", "#a9c07a", "#7fc466", "#48b977", "#46b8a0", "#48afc8", "#5b8fe0", "#7777c9", "#b25670", "#d6ae8e", "#b3a69c", "#ecebe6"]
 const ROOFS := ["#e58a5c", "#d7654e", "#eaa865", "#c95f4c"]
@@ -26,6 +26,7 @@ var FRAME: Color; var PANE: Color; var PANE_HI: Color; var DOOR: Color
 var town: Node3D
 var MAT := {}
 var outline_mat: StandardMaterial3D
+var ink_mat: ShaderMaterial = null
 var water_mat: ShaderMaterial
 var mask_img: Image
 var mask_tex: ImageTexture
@@ -184,7 +185,7 @@ func _ready() -> void:
 		E.append(row)
 	for h in PALETTE: PAL.append(lin(h))
 	for h in ROOFS: ROOF.append(lin(h))
-	CAP = lin("#ecc27e"); COBBLE = lin("#c7b3a3"); STONE = lin("#b9aea6"); RAIL = lin("#34424f")
+	CAP = lin("#ecc27e"); COBBLE = lin("#c7b3a3"); STONE = lin("#8e87a0"); RAIL = lin("#34424f")
 	FRAME = lin("#f4f1ea"); PANE = lin("#34465f"); PANE_HI = lin("#6d8aa6"); DOOR = lin("#6e4b3b")
 
 	_scene()
@@ -224,7 +225,7 @@ func _edge(c: int, i: int) -> Dictionary:
 
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
-	base_dist = 43.0 if s.x < s.y else 29.0
+	base_dist = 37.0 if s.x < s.y else 25.0
 	if refl_vp: refl_vp.size = Vector2i(maxi(64, int(s.x * 0.3)), maxi(64, int(s.y * 0.3)))
 	_reframe()
 	dist = goal_dist; target = goal_target
@@ -348,6 +349,10 @@ func _mat(tex: Texture2D, scale: Vector3) -> StandardMaterial3D:
 		m.albedo_texture = tex
 		m.uv1_scale = scale
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	if ink_mat == null:
+		ink_mat = ShaderMaterial.new()
+		ink_mat.shader = load("res://shaders/outline.gdshader")
+	m.next_pass = ink_mat
 	return m
 
 # ---------------------------------------------------------------- textures (drawn in code)
@@ -443,11 +448,11 @@ func _land_seg(c: int, ci: int, a2: Vector2, b2: Vector2, ei: int, top: bool, ST
 	PL.ctx = {c = c, k = 0, t = "side", e = ei}
 	var col: Color = PAL[ci]
 	var o := nn * 0.035
-	var a0: Vector3 = A.call(G0 - 0.12) + o; var b0: Vector3 = B.call(G0 - 0.12) + o
+	var a0: Vector3 = A.call(G0 - 0.07) + o; var b0: Vector3 = B.call(G0 - 0.07) + o
 	var b1: Vector3 = B.call(G0 + 0.03) + o; var a1: Vector3 = A.call(G0 + 0.03) + o
 	PL.quad(a0, b0, b1, a1, col, null, nn)
 	PL.quad(a1, b1, B.call(G0 + 0.03), A.call(G0 + 0.03), shade(col, 1.08), null, Vector3.UP)
-	PL.quad(a0, b0, B.call(G0 - 0.12) - nn * 0.02, A.call(G0 - 0.12) - nn * 0.02, shade(col, 0.6), null, Vector3.DOWN)
+	PL.quad(a0, b0, B.call(G0 - 0.07) - nn * 0.02, A.call(G0 - 0.07) - nn * 0.02, shade(col, 0.6), null, Vector3.DOWN)
 	if top:
 		PL.ctx = {c = c, k = 0, t = "rail"}
 		var inset := nn * -0.06
@@ -705,7 +710,7 @@ func _reframe() -> void:
 	var f := _fit(blocks)
 	var sc: float = maxf(0.55, f.r / fit0.r)
 	goal_dist = clampf(base_dist * sc * zoom_mul, 7.0, 90.0)
-	goal_target = Vector3(1.3, 3.3, -0.7) + (f.c - fit0.c)
+	goal_target = Vector3(1.3, 4.6, -0.7) + (f.c - fit0.c)
 
 var rise: Node3D = null
 var rise_t := -1.0
