@@ -6,6 +6,7 @@ extends Node3D
 const GRID_SEED := 11
 const MAXK := 30
 const G0 := 0.5
+const AO_K := 0.6
 const FH := 1.0
 const PALETTE := ["#e95c5b", "#ee8a5a", "#f2cf63", "#d9e070", "#a9c07a", "#7fc466", "#48b977", "#46b8a0", "#48afc8", "#5b8fe0", "#7777c9", "#b25670", "#d6ae8e", "#b3a69c", "#ecebe6"]
 const ROOFS := ["#e58a5c", "#d7654e", "#eaa865", "#c95f4c"]
@@ -468,6 +469,22 @@ func _land_seg(c: int, ci: int, a2: Vector2, b2: Vector2, ei: int, top: bool, ST
 		var mm := a.lerp(b, 0.5); mm.y = G0 + 0.32
 		PL.box(mm, tt, nn, L / 2.0 + 0.012, 0.016, 0.02, RAIL)
 
+# contact shading: quay stone darkens where it meets a building wall
+func _ao_col(c: int, vi: int, q: Vector2) -> Color:
+	var cl: Dictionary = cells[c]
+	var dark := false
+	if vi >= 0:
+		for oc in vcells[vi]:
+			if oc != c and has(oc, 1): dark = true
+	else:
+		for i in 4:
+			var a: Vector2 = P[cl.v[i]]; var b: Vector2 = P[cl.v[(i + 1) % 4]]
+			if has(cl.nb[i], 1) and Geometry2D.get_closest_point_to_segment(q, a, b).distance_to(q) < 0.04: dark = true
+			if a.distance_to(q) < 0.04:
+				for oc in vcells[cl.v[i]]:
+					if oc != c and has(oc, 1): dark = true
+	return shade(COBBLE, AO_K) if dark else COBBLE
+
 func _conn(c: int, k: int, i: int) -> int:
 	var n: int = cells[c].nb[i]
 	return 1 if has(n, k) and not has(n, k + 1) else 0
@@ -523,7 +540,9 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 				var q := []; var qu := []
 				for vi in cl.v:
 					var pt := vp(vi, G0); q.append(pt); qu.append(Vector2(pt.x * 0.9, pt.z * 0.9))
-				GR.quad(q[0], q[1], q[2], q[3], COBBLE, qu, Vector3.UP)
+				var qc := []
+				for vi in cl.v: qc.append(_ao_col(c, vi, P[vi]))
+				GR.quad(q[0], q[1], q[2], q[3], qc, qu, Vector3.UP)
 			# outline with Townscaper-style rounded convex corners on open quays
 			var rnd := []
 			for i in 4:
@@ -562,7 +581,7 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 				for j in outline.size():
 					var q1: Vector2 = outline[j]; var q2: Vector2 = outline[(j + 1) % outline.size()]
 					var A3 := Vector3(q1.x, G0, q1.y); var B3 := Vector3(q2.x, G0, q2.y)
-					GR.tri(C0, A3, B3, COBBLE, COBBLE, COBBLE, Vector2(C0.x, C0.z) * 0.9, Vector2(A3.x, A3.z) * 0.9, Vector2(B3.x, B3.z) * 0.9, Vector3.UP)
+					GR.tri(C0, A3, B3, COBBLE, _ao_col(c, -1, q1), _ao_col(c, -1, q2), Vector2(C0.x, C0.z) * 0.9, Vector2(A3.x, A3.z) * 0.9, Vector2(B3.x, B3.z) * 0.9, Vector3.UP)
 			for sg in segs:
 				_land_seg(c, ci, sg[0], sg[1], sg[2], top, ST, PL)
 			if top:
