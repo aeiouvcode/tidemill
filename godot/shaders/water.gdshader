@@ -7,6 +7,7 @@ uniform sampler2D mask_wide : filter_linear, repeat_disable;
 uniform sampler2D refl : filter_linear, repeat_disable;
 uniform float mb = 17.0;
 uniform float u_time = 0.0;
+uniform vec2 focus = vec2(0.0);
 uniform vec3 base_col : source_color = vec3(0.17, 0.40, 0.43);
 uniform vec3 shallow : source_color = vec3(0.40, 0.62, 0.58);
 varying vec3 w;
@@ -24,6 +25,8 @@ void fragment(){
 	float mw = inb ? texture(mask_wide, muv).r : 0.0;
 	float n = sin(w.x*0.35 + u_time*0.25) * sin(w.z*0.3 - u_time*0.2);
 	vec3 col = base_col * (0.97 + 0.05*n);
+	// open sea deepens away from the town, like the reference's darker teal
+	col *= mix(1.0, 0.84, smoothstep(10.0, 45.0, length(w.xz - focus)));
 	col = mix(col, shallow, smoothstep(0.0, 0.55, m) * 0.7);
 	// soft planar reflection of the town, wobbled by the swell, tinted into the sea
 	vec2 wob = vec2(sin(w.z*1.7 + u_time*1.3), sin(w.x*1.3 - u_time*1.1)) * 0.004 + vec2(n*0.003, 0.0);
