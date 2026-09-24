@@ -1,14 +1,5 @@
-# Checkpoint
+# Checkpoint - 2026-09-24 07:31 IST
 
-Completed atomic steps, newest last. Do not redo anything listed here.
-
-| Date | Step | Evidence (commit, URL, screenshot) |
-| --- | --- | --- |
-| 2026-09-21 | 2D prototype shipped to Pages + Instinct File gen 1 | https://aeiouvcode.github.io/tidemill/ |
-| 2026-09-22 | True-3D rebuild (three.js procedural houses, arches, lighthouse) deployed; live QA passed (tap builds, persists, orbits, no console errors) | https://aeiouvcode.github.io/tidemill/ |
-| 2026-09-22 | File gen 2 published (swatch touch-target fix) | filerevision-01M32KZ03J9T2FND6864VV3WAD |
-| 2026-09-23 | Distance-to-reference audit: 8 official Townscaper screenshots, phone+desktop side-by-sides, gap list P1-P7 | audit composites reported to parent |
-| 2026-09-23 | Audit fix pass: terracotta tiled roofs with ink eaves/ridge caps/tile stripes, brighter palette + relight, arched street doors, ink window frames, sRGB->linear vertex-color fix | commit de8913dd; File gen 3 filerevision-01M363BASQ6DVYHJWBXQTDMWM3 |
-| 2026-09-23 | Repo state files (CURRENT_TASK/CHECKPOINT/HANDOFF) introduced per owner ruling | this commit |
-| 2026-09-23 | P5 water: scalloped foam wash on shoreline edges + lighthouse rock ring, breathing opacity; deployed and File gen 4 published | commit b5fd095; https://aeiouvcode.github.io/tidemill/ |
-| 2026-09-23 | Engine ruling: engine-bound gaps (water shading/foam, lighting, full-scene outlines, perf headroom) go to a Godot 4 Compatibility/WebGL2 branch; three.js main stays live | parent ruling 2026-09-23 |
+v4 live on main at commit b7a40cd0 (parent 0c650137).
+Served md5s matched local: index.html 6032028f, app.js 576b00a0, OrbitControls.js 46d6a4af, three.module.min.js 4d8e72af.
+Live check at 390x844: the reference town renders. A tap adds a block and writes the town into the hash.
