@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#4a898e">
+<title>Tidemill</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#4a898e;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  body{font:500 13px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
+  canvas{display:block}
+  #pal{position:fixed;left:max(12px,env(safe-area-inset-left));top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:7px}
+  #pal button{width:24px;height:24px;border-radius:7px;border:0;padding:0;box-shadow:0 1px 3px rgba(0,30,40,.35),inset 0 -2px 0 rgba(0,0,0,.12);transition:transform .18s cubic-bezier(.3,1.6,.5,1);cursor:pointer}
+  #pal button.on{transform:scale(1.22);outline:2px solid #fff;outline-offset:1px}
+  #tools{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:10px}
+  #tools button{width:44px;height:44px;border-radius:22px;border:0;background:rgba(255,255,255,.16);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;display:grid;place-items:center;cursor:pointer;transition:transform .15s,background .2s}
+  #tools button:active{transform:scale(.9)}
+  #tools button.on{background:#fff;color:#2f6c73}
+  #tools svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  #title{position:fixed;left:max(14px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));letter-spacing:.18em;text-transform:uppercase;font-size:11px;opacity:.75;transition:opacity 1.2s}
+  #hint{position:fixed;left:0;right:0;bottom:max(76px,calc(env(safe-area-inset-bottom) + 70px));text-align:center;opacity:.85;transition:opacity 1s;pointer-events:none;text-shadow:0 1px 6px rgba(0,40,50,.4)}
+  #toast{position:fixed;left:50%;top:18px;transform:translate(-50%,-60px);background:rgba(255,255,255,.92);color:#2f6c73;padding:8px 14px;border-radius:16px;transition:transform .35s cubic-bezier(.3,1.4,.5,1)}
+  #toast.show{transform:translate(-50%,0)}
+  .fade{opacity:0!important}
+</style>
+</head>
+<body>
+<div id="title">Tidemill</div>
+<div id="pal"></div>
+<div id="tools">
+  <button id="undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+  <button id="erase" aria-label="Remove blocks"><svg viewBox="0 0 24 24"><path d="M20 20H9L4 15a2 2 0 0 1 0-3L13 3a2 2 0 0 1 3 0l4 4a2 2 0 0 1 0 3l-9 9"/><path d="m8 9 7 7"/></svg></button>
+  <button id="share" aria-label="Share town"><svg viewBox="0 0 24 24"><path d="M12 3v13"/><path d="m7 8 5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg></button>
+</div>
+<div id="hint">Tap the sea to raise land · tap again to build up · drag to turn</div>
+<div id="toast"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
