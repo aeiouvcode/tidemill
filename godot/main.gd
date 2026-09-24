@@ -16,6 +16,7 @@ const MB := 17.0
 var P: Array = []        # Vector2 per grid vertex
 var cells: Array = []    # {v: PackedInt32Array, c: Vector2, nb: PackedInt32Array}
 var E: Array = []        # E[c][i] edge dictionaries
+var vcells := {}         # grid vertex -> cells touching it
 var blocks := {}         # c*32+k -> colour index
 var PAL: Array = []
 var ROOF: Array = []
@@ -33,6 +34,11 @@ var pick_groups: Array = []  # [PackedVector3Array positions, Array info]
 var cam: Camera3D
 var target := Vector3(1.3, 3.3, -0.7)
 var dist := 43.0
+var base_dist := 43.0
+var zoom_mul := 1.0
+var fit0 := {}
+var goal_target := Vector3(1.3, 3.3, -0.7)
+var goal_dist := 43.0
 var az := 0.55
 var pol := 0.98
 var v_az := 0.0
@@ -163,6 +169,10 @@ func _ready() -> void:
 	for cl in data.cells:
 		cells.append({v = PackedInt32Array(cl.v), c = Vector2(cl.c[0], cl.c[1]), nb = PackedInt32Array(cl.nb)})
 	for c in cells.size():
+		for vi in cells[c].v:
+			if not vcells.has(vi): vcells[vi] = []
+			vcells[vi].append(c)
+	for c in cells.size():
 		var row := []
 		for i in 4:
 			row.append(_edge(c, i))
@@ -184,6 +194,9 @@ func _ready() -> void:
 		loaded = {}
 		for pair in data.town:
 			loaded[int(pair[0])] = int(pair[1])
+	var dflt := {}
+	for pair in data.town: dflt[int(pair[0])] = int(pair[1])
+	fit0 = _fit(dflt)
 	blocks = loaded
 	rebuild()
 	_save()
@@ -206,7 +219,9 @@ func _edge(c: int, i: int) -> Dictionary:
 
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
-	dist = 43.0 if s.x < s.y else 29.0
+	base_dist = 43.0 if s.x < s.y else 29.0
+	_reframe()
+	dist = goal_dist; target = goal_target
 
 func _scene() -> void:
 	var env := WorldEnvironment.new()
@@ -387,6 +402,44 @@ func _tex_stone() -> ImageTexture:
 	return _done(im)
 
 # ---------------------------------------------------------------- town grammar (port of v4 buildTown)
+func _land_seg(c: int, ci: int, a2: Vector2, b2: Vector2, ei: int, top: bool, ST: GB, PL: GB) -> void:
+	var L := a2.distance_to(b2)
+	if L < 0.001: return
+	var tt := Vector3(b2.x - a2.x, 0, b2.y - a2.y) / L
+	var nn := Vector3(tt.z, 0, -tt.x)
+	var cc: Vector2 = cells[c].c
+	var m := (a2 + b2) * 0.5
+	if nn.x * (m.x - cc.x) + nn.z * (m.y - cc.y) < 0.0: nn = -nn
+	var A := func(y: float) -> Vector3: return Vector3(a2.x, y, a2.y)
+	var B := func(y: float) -> Vector3: return Vector3(b2.x, y, b2.y)
+	ST.ctx = {c = c, k = 0, t = "side", e = ei}
+	var dk := shade(STONE, 0.45)
+	var u0 := a2.x * tt.x + a2.y * tt.z
+	ST.quad(A.call(-1.4), B.call(-1.4), B.call(G0 - 0.1), A.call(G0 - 0.1), [dk, dk, STONE, STONE], [Vector2(u0, -1.4), Vector2(u0 + L, -1.4), Vector2(u0 + L, G0), Vector2(u0, G0)], nn)
+	# stone footing: a heavier plinth stepping out at the waterline
+	var fo := nn * 0.08
+	var fc := shade(STONE, 0.78)
+	ST.quad(A.call(-0.5) + fo, B.call(-0.5) + fo, B.call(0.02) + fo, A.call(0.02) + fo, [shade(fc, 0.6), shade(fc, 0.6), fc, fc], [Vector2(u0, -0.5), Vector2(u0 + L, -0.5), Vector2(u0 + L, 0.02), Vector2(u0, 0.02)], nn)
+	ST.quad(A.call(0.02), B.call(0.02), B.call(0.02) + fo, A.call(0.02) + fo, shade(STONE, 0.9), null, Vector3.UP)
+	PL.ctx = {c = c, k = 0, t = "side", e = ei}
+	var col: Color = PAL[ci]
+	var o := nn * 0.035
+	var a0: Vector3 = A.call(G0 - 0.12) + o; var b0: Vector3 = B.call(G0 - 0.12) + o
+	var b1: Vector3 = B.call(G0 + 0.03) + o; var a1: Vector3 = A.call(G0 + 0.03) + o
+	PL.quad(a0, b0, b1, a1, col, null, nn)
+	PL.quad(a1, b1, B.call(G0 + 0.03), A.call(G0 + 0.03), shade(col, 1.08), null, Vector3.UP)
+	PL.quad(a0, b0, B.call(G0 - 0.12) - nn * 0.02, A.call(G0 - 0.12) - nn * 0.02, shade(col, 0.6), null, Vector3.DOWN)
+	if top:
+		PL.ctx = {c = c, k = 0, t = "rail"}
+		var inset := nn * -0.06
+		var a: Vector3 = A.call(0) + inset; var b: Vector3 = B.call(0) + inset
+		var posts := maxi(1, roundi(L / 0.17))
+		for j in posts + 1:
+			var pp := a.lerp(b, float(j) / posts); pp.y = G0 + 0.17
+			PL.box(pp, tt, nn, 0.011, 0.14, 0.011, RAIL)
+		var mm := a.lerp(b, 0.5); mm.y = G0 + 0.32
+		PL.box(mm, tt, nn, L / 2.0 + 0.012, 0.016, 0.02, RAIL)
+
 func _conn(c: int, k: int, i: int) -> int:
 	var n: int = cells[c].nb[i]
 	return 1 if has(n, k) and not has(n, k + 1) else 0
@@ -443,31 +496,47 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 				for vi in cl.v:
 					var pt := vp(vi, G0); q.append(pt); qu.append(Vector2(pt.x * 0.9, pt.z * 0.9))
 				GR.quad(q[0], q[1], q[2], q[3], COBBLE, qu, Vector3.UP)
+			# outline with Townscaper-style rounded convex corners on open quays
+			var rnd := []
 			for i in 4:
-				var n: int = cl.nb[i]
-				if has(n, 0): continue
-				var e: Dictionary = E[c][i]
-				ST.ctx = {c = c, k = 0, t = "side", e = i}
-				var dk := shade(STONE, 0.45)
-				ST.quad(vp(e.a, -1.4), vp(e.b, -1.4), vp(e.b, G0 - 0.1), vp(e.a, G0 - 0.1), [dk, dk, STONE, STONE], [Vector2(0, -1.4), Vector2(e.L, -1.4), Vector2(e.L, G0), Vector2(0, G0)], e.n)
-				PL.ctx = {c = c, k = 0, t = "side", e = i}
-				var col: Color = PAL[ci]
-				var o: Vector3 = e.n * 0.035
-				var a0 := vp(e.a, G0 - 0.12) + o; var b0 := vp(e.b, G0 - 0.12) + o
-				var b1 := vp(e.b, G0 + 0.03) + o; var a1 := vp(e.a, G0 + 0.03) + o
-				PL.quad(a0, b0, b1, a1, col, null, e.n)
-				PL.quad(a1, b1, vp(e.b, G0 + 0.03), vp(e.a, G0 + 0.03), shade(col, 1.08), null, Vector3.UP)
-				PL.quad(a0, b0, vp(e.b, G0 - 0.12) + e.n * -0.02, vp(e.a, G0 - 0.12) + e.n * -0.02, shade(col, 0.6), null, Vector3.DOWN)
-				if top:
-					PL.ctx = {c = c, k = 0, t = "rail"}
-					var inset: Vector3 = e.n * -0.06
-					var a := vp(e.a, 0) + inset; var b := vp(e.b, 0) + inset
-					var posts := maxi(2, roundi(e.L / 0.17))
-					for j in posts + 1:
-						var pp := a.lerp(b, float(j) / posts); pp.y = G0 + 0.17
-						PL.box(pp, e.t, e.n, 0.011, 0.14, 0.011, RAIL)
-					var mm := a.lerp(b, 0.5); mm.y = G0 + 0.32
-					PL.box(mm, e.t, e.n, e.L / 2.0 + 0.012, 0.016, 0.02, RAIL)
+				var pv := (i + 3) % 4
+				var free_v := true
+				for oc in vcells[cl.v[i]]:
+					if oc != c and has(oc, 0): free_v = false
+				rnd.append(top and not has(cl.nb[pv], 0) and not has(cl.nb[i], 0) and free_v)
+			var outline := []
+			var segs := []
+			for i in 4:
+				var a: Vector2 = P[cl.v[i]]; var b: Vector2 = P[cl.v[(i + 1) % 4]]
+				var pa: Vector2 = P[cl.v[(i + 3) % 4]]
+				var L := a.distance_to(b)
+				var dir := (b - a) / L
+				var dprev := (a - pa).normalized()
+				var r := minf(0.3, minf(L, pa.distance_to(a)) * 0.45)
+				var s0 := a + dir * r if rnd[i] else a
+				if rnd[i]:
+					var p0 := a - dprev * r
+					var last := p0
+					for j in range(0, 7):
+						var tt := j / 6.0
+						var q := p0 * (1 - tt) * (1 - tt) + a * 2 * (1 - tt) * tt + s0 * tt * tt
+						outline.append(q)
+						if j > 0: segs.append([last, q, i])
+						last = q
+				else:
+					outline.append(a)
+				var nxt: bool = rnd[(i + 1) % 4]
+				var e1 := b - dir * minf(0.3, minf(L, b.distance_to(P[cl.v[(i + 2) % 4]])) * 0.45) if nxt else b
+				if not has(cl.nb[i], 0): segs.append([s0, e1, i])
+			if top:
+				GR.ctx = {c = c, k = 0, t = "top"}
+				var C0 := Vector3(cl.c.x, G0, cl.c.y)
+				for j in outline.size():
+					var q1: Vector2 = outline[j]; var q2: Vector2 = outline[(j + 1) % outline.size()]
+					var A3 := Vector3(q1.x, G0, q1.y); var B3 := Vector3(q2.x, G0, q2.y)
+					GR.tri(C0, A3, B3, COBBLE, COBBLE, COBBLE, Vector2(C0.x, C0.z) * 0.9, Vector2(A3.x, A3.z) * 0.9, Vector2(B3.x, B3.z) * 0.9, Vector3.UP)
+			for sg in segs:
+				_land_seg(c, ci, sg[0], sg[1], sg[2], top, ST, PL)
 			if top:
 				var nbld := []
 				for i in 4:
@@ -598,6 +667,27 @@ func build_town(ac := -1, ak := -1) -> Dictionary:
 	return {W = W, RF = RF, GR = GR, ST = ST, PL = PL, lamps = lamps, bushes = bushes, finials = finials}
 
 # ---------------------------------------------------------------- rebuild
+# Townscaper-style auto framing: the camera eases out and re-centres as the
+# town grows, scaled so the default town frames exactly like v4.
+func _fit(b: Dictionary) -> Dictionary:
+	if b.is_empty(): return {c = Vector3(0, 0, 0), r = 3.0}
+	var lo := Vector2(1e9, 1e9); var hi := Vector2(-1e9, -1e9); var ymax := 0.0
+	for kk in b.keys():
+		var c: int = int(kk) / 32; var k: int = int(kk) % 32
+		var cc: Vector2 = cells[c].c
+		lo = lo.min(cc); hi = hi.max(cc)
+		ymax = maxf(ymax, G0 + k * FH + (1.25 if k > 0 else 0.3))
+	var mid := (lo + hi) * 0.5
+	var r := maxf((hi - lo).length() * 0.5 + 1.0, ymax * 0.62)
+	return {c = Vector3(mid.x, ymax * 0.33, mid.y), r = r}
+
+func _reframe() -> void:
+	if fit0.is_empty(): return
+	var f := _fit(blocks)
+	var sc: float = maxf(0.55, f.r / fit0.r)
+	goal_dist = clampf(base_dist * sc * zoom_mul, 7.0, 90.0)
+	goal_target = Vector3(1.3, 3.3, -0.7) + (f.c - fit0.c)
+
 var rise: Node3D = null
 var rise_t := -1.0
 var drops: Array = []
@@ -606,6 +696,7 @@ func rebuild(ac := -1, ak := -1) -> void:
 	for ch in town.get_children():
 		ch.queue_free()
 	pick_groups = []
+	_reframe()
 	var B := build_town(ac, ak)
 	if rise: rise.queue_free(); rise = null
 	if ac >= 0:
@@ -925,7 +1016,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 				down = {p = ev.position, t = t, moved = false, used = false}
 			else:
 				down = null
-				var ps := touches.values(); pinch0 = (ps[0] as Vector2).distance_to(ps[1]); dist0 = dist
+				var ps := touches.values(); pinch0 = (ps[0] as Vector2).distance_to(ps[1]); dist0 = zoom_mul
 		else:
 			touches.erase(ev.index)
 			if down != null and not down.moved and not down.used and t - down.t < 0.45:
@@ -937,7 +1028,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if touches.size() >= 2:
 			var ps := touches.values()
 			var dd := (ps[0] as Vector2).distance_to(ps[1])
-			if pinch0 > 0: dist = clampf(dist0 * pinch0 / maxf(dd, 1.0), 7.0, 75.0)
+			if pinch0 > 0: zoom_mul = clampf(dist0 * pinch0 / maxf(dd, 1.0), 0.25, 2.2); _reframe()
 		else:
 			if down != null and (ev.position - down.p).length() > 8: down.moved = true
 			if down == null or down.moved:
@@ -946,8 +1037,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 				v_pol = -TAU * ev.relative.y / hgt * 0.55
 	elif ev is InputEventMouseButton and ev.pressed:
 		last_interact = t
-		if ev.button_index == MOUSE_BUTTON_WHEEL_UP: dist = clampf(dist * 0.92, 7.0, 75.0)
-		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN: dist = clampf(dist / 0.92, 7.0, 75.0)
+		if ev.button_index == MOUSE_BUTTON_WHEEL_UP: zoom_mul = clampf(zoom_mul * 0.92, 0.25, 2.2); _reframe()
+		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN: zoom_mul = clampf(zoom_mul / 0.92, 0.25, 2.2); _reframe()
 		elif ev.button_index == MOUSE_BUTTON_RIGHT: act(ev.position, true)
 
 func _process(delta: float) -> void:
@@ -961,6 +1052,8 @@ func _process(delta: float) -> void:
 	az += v_az; pol = clampf(pol + v_pol, 0.25, 1.38)
 	v_az *= 0.92 if touches.size() == 0 else 0.0
 	v_pol *= 0.92 if touches.size() == 0 else 0.0
+	var kf := 1.0 - exp(-dt * 2.2)
+	target = target.lerp(goal_target, kf); dist = lerpf(dist, goal_dist, kf)
 	cam.position = target + Vector3(sin(pol) * sin(az), cos(pol), sin(pol) * cos(az)) * dist
 	cam.look_at(target, Vector3.UP)
 	water_mat.set_shader_parameter("u_time", t)
