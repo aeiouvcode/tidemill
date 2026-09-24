@@ -29,6 +29,9 @@ var outline_mat: StandardMaterial3D
 var water_mat: ShaderMaterial
 var mask_img: Image
 var mask_tex: ImageTexture
+var mask_wide_tex: ImageTexture
+var refl_vp: SubViewport
+var refl_cam: Camera3D
 var pick_groups: Array = []  # [PackedVector3Array positions, Array info]
 
 var cam: Camera3D
@@ -220,6 +223,7 @@ func _edge(c: int, i: int) -> Dictionary:
 func _frame() -> void:
 	var s := get_viewport().get_visible_rect().size
 	base_dist = 43.0 if s.x < s.y else 29.0
+	if refl_vp: refl_vp.size = Vector2i(maxi(64, int(s.x * 0.4)), maxi(64, int(s.y * 0.4)))
 	_reframe()
 	dist = goal_dist; target = goal_target
 
@@ -287,12 +291,25 @@ func _scene() -> void:
 	water_mat.shader = load("res://shaders/water.gdshader")
 	water_mat.set_shader_parameter("mask", mask_tex)
 	water_mat.set_shader_parameter("mb", MB)
+	mask_wide_tex = ImageTexture.create_from_image(mask_img)
+	water_mat.set_shader_parameter("mask_wide", mask_wide_tex)
+	# planar reflection: a low-res mirrored camera renders the town (not the sea)
+	refl_vp = SubViewport.new()
+	refl_vp.transparent_bg = true
+	refl_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	refl_vp.size = Vector2i(256, 256)
+	add_child(refl_vp)
+	refl_cam = Camera3D.new()
+	refl_cam.cull_mask = 1
+	refl_vp.add_child(refl_cam)
+	water_mat.set_shader_parameter("refl", refl_vp.get_texture())
 	var water := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(400, 400)
 	water.mesh = plane
 	water.material_override = water_mat
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water.layers = 2
 	add_child(water)
 
 	# gulls
@@ -818,6 +835,10 @@ func _rebuild_mask() -> void:
 	b.resize(26, 26, Image.INTERPOLATE_LANCZOS)
 	b.resize(MS, MS, Image.INTERPOLATE_CUBIC)
 	mask_tex.update(b)
+	var bw := mask_img.duplicate() as Image
+	bw.resize(11, 11, Image.INTERPOLATE_LANCZOS)
+	bw.resize(MS, MS, Image.INTERPOLATE_CUBIC)
+	mask_wide_tex.update(bw)
 
 # ---------------------------------------------------------------- save / share
 func _win():
@@ -1056,6 +1077,9 @@ func _process(delta: float) -> void:
 	target = target.lerp(goal_target, kf); dist = lerpf(dist, goal_dist, kf)
 	cam.position = target + Vector3(sin(pol) * sin(az), cos(pol), sin(pol) * cos(az)) * dist
 	cam.look_at(target, Vector3.UP)
+	refl_cam.fov = cam.fov; refl_cam.near = cam.near; refl_cam.far = cam.far
+	var mp := Vector3(cam.position.x, -cam.position.y, cam.position.z)
+	refl_cam.look_at_from_position(mp, Vector3(target.x, -target.y, target.z), Vector3.UP)
 	water_mat.set_shader_parameter("u_time", t)
 	for g in gulls:
 		var a: float = t * g.sp + g.ph
