@@ -29,13 +29,14 @@ void fragment(){
 	vec2 wob = vec2(sin(w.z*1.7 + u_time*1.3), sin(w.x*1.3 - u_time*1.1)) * 0.004 + vec2(n*0.003, 0.0);
 	vec2 ruv = vec2(SCREEN_UV.x, 1.0 - SCREEN_UV.y) + wob;
 	vec4 r = vec4(0.0); float wsum = 0.0;
-	for (int i = -2; i <= 2; i++) { for (int j = -2; j <= 2; j++) {
+	float probe = texture(refl, ruv).a + texture(refl, ruv + vec2(0.012, 0.015)).a + texture(refl, ruv - vec2(0.012, 0.015)).a;
+	if (probe > 0.001) for (int i = -1; i <= 1; i++) { for (int j = -1; j <= 1; j++) {
 		float k = 1.0 / (1.0 + float(i*i + j*j));
-		r += texture(refl, ruv + vec2(float(i) * 0.005, float(j) * 0.006)) * k; wsum += k;
+		r += texture(refl, ruv + vec2(float(i) * 0.008, float(j) * 0.01)) * k; wsum += k;
 	} }
-	r /= wsum;
+	r /= max(wsum, 1.0);
 	float ra = smoothstep(0.25, 0.9, r.a);
-	vec3 rc = mix(clamp(r.rgb, 0.0, 1.0), col, 0.35) * 0.88;
+	vec3 rc = mix(clamp(r.rgb, 0.0, 1.0) * vec3(1.05, 0.95, 0.95), col, 0.3) * 0.9;
 	col = mix(col, rc, ra * (0.28 + 0.22 * smoothstep(0.0, 0.4, mw)));
 	float ring = 0.5 + 0.5*sin(m*26.0 - u_time*1.1 + n*0.6);
 	float brk = smoothstep(0.25, 0.65, vnoise(w.xz*2.6 + vec2(u_time*0.3, -u_time*0.2)));
