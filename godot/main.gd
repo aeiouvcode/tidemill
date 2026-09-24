@@ -1089,6 +1089,7 @@ func _process(delta: float) -> void:
 		refl_n = 0; refl_last = refl_cam.global_transform
 		refl_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	water_mat.set_shader_parameter("u_time", t)
+	water_mat.set_shader_parameter("focus", Vector2(target.x, target.z))
 	for g in gulls:
 		var a: float = t * g.sp + g.ph
 		g.n.position = Vector3(cos(a) * g.rad, g.h + sin(t * 0.7 + g.ph) * 0.4, sin(a) * g.rad)
